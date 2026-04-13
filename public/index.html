@@ -210,6 +210,7 @@ body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;font-
 <div class="layout">
   <div class="sidebar">
     <div class="s-lbl">Live TA Scans</div>
+    <button class="s-btn" onclick="ask('Show me current global market snapshot — Dow Jones, Nasdaq, SGX Nifty, VIX, India VIX, Crude Oil, USD/INR and what it means for Nifty and Indian stocks today')"><span class="s-ic">🌍</span>Global Markets Now</button>
     <button class="s-btn" onclick="ask('Run full live technical analysis on Nifty 50 — RSI, MACD, EMA signals, trend, support/resistance and trade setup based on current levels')"><span class="s-ic">📊</span>Nifty TA Now</button>
     <button class="s-btn" onclick="ask('Technical scan: 5 NSE stocks with strong BUY signals right now — RSI oversold, MACD bullish crossover, or EMA breakout. Entry price, target, SL for each')"><span class="s-ic">🔍</span>Buy Signal Scan</button>
     <button class="s-btn" onclick="ask('5 NSE stocks with bearish signals — RSI overbought, death cross, or support breakdown. Good for shorting or buying puts. Entry, target, SL')"><span class="s-ic">📉</span>Short Signal Scan</button>
@@ -412,19 +413,42 @@ async function send(){
   const w=document.getElementById('welcome');if(w)w.remove();
   inp.value='';inp.style.height='auto';
   addMsg('user',q);
-  const lid=addLoading('Fetching live NSE data...');
-  let liveCtx='',liveBanner='',taResults=[];
+  const lid=addLoading('Fetching global markets + live NSE data...');
+  let liveCtx='',liveBanner='',taResults=[],globalData=null;
   try{
+    // Fetch global markets and stock TA in parallel
     const syms=extractSymbols(q);
-    if(syms.length){
-      updateLoad(lid,'Computing RSI, MACD, EMA from live data...');
-      const res=await Promise.allSettled(syms.slice(0,4).map(s=>fetchLiveTA(s)));
-      res.forEach(r=>{if(r.status==='fulfilled'&&r.value)taResults.push(r.value)});
-      if(taResults.length){
-        const curr=p=>p.currency==='INR'?'₹':'$';
-        const lines=taResults.map(ta=>{
-          const chg=ta.price-ta.prev,cp=((chg/ta.prev)*100).toFixed(2);
-          return `[${ta.symbol}] ${ta.name}
+    const [globalRes, ...taRes] = await Promise.allSettled([
+      fetch('/api/global-markets').then(r=>r.json()).catch(()=>null),
+      ...syms.slice(0,4).map(s=>fetchLiveTA(s))
+    ]);
+
+    globalData = globalRes.status==='fulfilled' ? globalRes.value : null;
+    taRes.forEach(r=>{if(r.status==='fulfilled'&&r.value)taResults.push(r.value)});
+
+    // Build global market context for AI
+    let globalCtx = '';
+    if(globalData && globalData.markets){
+      const mkt = globalData.markets;
+      const fmt = m => m ? `${m.name}: ${m.price?.toFixed(2)} (${m.chg>=0?'+':''}${m.chgPct}%)` : 'N/A';
+      globalCtx = `\n\n[GLOBAL MARKET DATA — fetched now, use for F&O and sentiment analysis]
+Overall Sentiment: ${globalData.sentiment}
+US Markets: ${fmt(mkt.find(m=>m.key==='DJI'))} | ${fmt(mkt.find(m=>m.key==='NASDAQ'))} | ${fmt(mkt.find(m=>m.key==='SP500'))}
+Fear Gauges: CBOE VIX ${mkt.find(m=>m.key==='VIX')?.price?.toFixed(1)||'N/A'} | India VIX ${mkt.find(m=>m.key==='INDIAVIX')?.price?.toFixed(1)||'N/A'}
+Asia: ${fmt(mkt.find(m=>m.key==='NIKKEI'))} | ${fmt(mkt.find(m=>m.key==='HANGSENG'))}
+Commodities: Crude ${fmt(mkt.find(m=>m.key==='CRUDE'))} | Gold ${fmt(mkt.find(m=>m.key==='GOLD'))}
+Macro: USD/INR ${mkt.find(m=>m.key==='USDINR')?.price?.toFixed(2)||'N/A'} | Dollar Index ${mkt.find(m=>m.key==='DXY')?.price?.toFixed(2)||'N/A'} | US 10Y Yield ${mkt.find(m=>m.key==='US10Y')?.price?.toFixed(2)||'N/A'}%
+Market Mood: ${(globalData.mood||[]).join(' | ')}
+[CRITICAL FOR F&O: Use VIX level to determine buy vs sell options strategy. Use US market direction for gap-up/gap-down prediction. Use India VIX for Nifty options premium sizing.]
+[End global data]\n`;
+      liveCtx += globalCtx;
+    }
+
+    if(taResults.length){
+      const curr=p=>p.currency==='INR'?'₹':'$';
+      const lines=taResults.map(ta=>{
+        const chg=ta.price-ta.prev,cp=((chg/ta.prev)*100).toFixed(2);
+        return `[${ta.symbol}] ${ta.name}
   Price: ${curr(ta)}${ta.price.toFixed(2)} (${chg>=0?'+':''}${cp}%) | O:${curr(ta)}${ta.open?.toFixed(2)} H:${curr(ta)}${ta.high?.toFixed(2)} L:${curr(ta)}${ta.low?.toFixed(2)}
   RSI(14): ${ta.rsi?.toFixed(1)||'N/A'} | MACD: ${ta.macd?.macd?.toFixed(2)||'N/A'} Hist: ${ta.macd?.histogram?.toFixed(2)||'N/A'}
   EMA20: ${curr(ta)}${ta.e20?.toFixed(2)} | EMA50: ${ta.e50?curr(ta)+ta.e50.toFixed(2):'N/A'} | EMA200: ${ta.e200?curr(ta)+ta.e200.toFixed(2):'N/A'}
@@ -433,15 +457,41 @@ async function send(){
   Support: ${curr(ta)}${ta.support?.toFixed(2)} | Resistance: ${curr(ta)}${ta.resistance?.toFixed(2)}
   52W H/L: ${curr(ta)}${ta.fiftyTwoWeekHigh?.toFixed(2)||'N/A'} / ${curr(ta)}${ta.fiftyTwoWeekLow?.toFixed(2)||'N/A'}
   TA Signal: ${ta.overall}`;
-        }).join('\n\n');
-        liveCtx=`\n\n[LIVE TA DATA — real OHLCV from Yahoo Finance, computed now]\n${lines}\n[Use the price above as basis for all entry/exit. Do NOT use your training data prices.]\n`;
-        liveBanner=`<div class="live-banner">📡 <strong>Live data loaded:</strong> ${taResults.map(ta=>{const c=ta.currency==='INR'?'₹':'$';const chg=ta.price-ta.prev;return `${ta.symbol.replace('.NS','')} ${c}${ta.price.toFixed(2)} (${chg>=0?'▲':'▼'}${Math.abs(((chg/ta.prev)*100).toFixed(1))}%) · RSI ${ta.rsi?.toFixed(0)} · ${ta.overall}`}).join('<br>')}</div>`;
-      }
+      }).join('\n\n');
+      liveCtx+=`\n\n[LIVE TA DATA — real OHLCV from Yahoo Finance, computed now]\n${lines}\n[Use the price above as basis for all entry/exit. Do NOT use your training data prices.]\n`;
+    }
+
+    // Build live banner HTML
+    if(globalData || taResults.length){
+      const sent = globalData?.sentiment||'';
+      const sentColor = sent==='BULLISH'?'#00c97a':sent==='BEARISH'?'#ff4d6a':'#ffc107';
+      const mkt = globalData?.markets||[];
+      const dji = mkt.find(m=>m.key==='DJI');
+      const ndq = mkt.find(m=>m.key==='NASDAQ');
+      const vix = mkt.find(m=>m.key==='VIX');
+      const ivix = mkt.find(m=>m.key==='INDIAVIX');
+      const crude = mkt.find(m=>m.key==='CRUDE');
+      const usdinr = mkt.find(m=>m.key==='USDINR');
+      const fmtMkt = m => m?`${m.name} ${m.chg>=0?'▲':'▼'}${Math.abs(m.chgPct)}%`:'';
+
+      liveBanner = `<div style="background:rgba(0,153,255,0.07);border:1px solid rgba(0,153,255,0.2);border-radius:8px;padding:8px 11px;margin-bottom:9px;font-size:11px;line-height:1.8">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">
+          <span style="font-weight:600;color:#0099ff">🌍 Global Markets</span>
+          <span style="background:${sentColor}22;color:${sentColor};padding:1px 8px;border-radius:10px;font-weight:600;font-size:10px">${sent}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:5px">
+          ${dji?`<span style="color:#8a9bb0">${fmtMkt(dji)}</span>`:''}
+          ${ndq?`<span style="color:#8a9bb0">${fmtMkt(ndq)}</span>`:''}
+          ${vix?`<span style="color:${vix.price>20?'#ff4d6a':'#ffc107'}">VIX ${vix.price?.toFixed(1)} ${vix.price>25?'⚠ HIGH':vix.price<15?'✓ LOW':''}</span>`:''}
+          ${ivix?`<span style="color:${ivix.price>18?'#ff4d6a':'#ffc107'}">India VIX ${ivix.price?.toFixed(1)}</span>`:''}
+          ${crude?`<span style="color:#8a9bb0">Crude ${crude.chg>=0?'▲':'▼'}${Math.abs(crude.chgPct)}%</span>`:''}
+          ${usdinr?`<span style="color:#8a9bb0">₹/${usdinr.price?.toFixed(2)}</span>`:''}
+        </div>
+        ${(globalData?.mood||[]).slice(0,2).map(m=>`<div style="color:#ffc107;font-size:10px">⚡ ${m}</div>`).join('')}
+        ${taResults.length?`<div style="margin-top:5px;padding-top:5px;border-top:1px solid rgba(255,255,255,0.07);color:#00d4a0">📡 Live TA: ${taResults.map(ta=>{const c=ta.currency==='INR'?'₹':'$';const chg=ta.price-ta.prev;return `${ta.symbol.replace('.NS','')} ${c}${ta.price.toFixed(2)} (${chg>=0?'▲':'▼'}${Math.abs(((chg/ta.prev)*100).toFixed(1))}%) · RSI ${ta.rsi?.toFixed(0)} · ${ta.overall}`}).join(' | ')}</div>`:''}
+      </div>`;
     }
   }catch(e){}
-  if(!taResults.length&&extractSymbols(q).length){
-    liveBanner=`<div class="stale-banner">⚠ Live data unavailable — AI will use estimated prices. Verify on NSE/Zerodha before trading.</div>`;
-  }
   history.push({role:'user',content:q+liveCtx});
   updateLoad(lid,'Analysing...');
   try{
