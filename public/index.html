@@ -539,6 +539,18 @@ function addCards(data,banner='',taResults=[]){
   h+='<div>';
   (data.stocks||[]).forEach(s=>{
     const ta=taResults.find(t=>t.symbol.replace('.NS','')===s.ticker||t.symbol===s.ticker+'.NS'||t.symbol===s.ticker);
+    // Auto-fill missing prices using live ATR when AI leaves them blank
+    if(ta&&ta.price){
+      const fp=v=>v&&v!==''&&v!=='←'&&v!=='—'&&v!=='null';
+      if(!fp(s.entry))s.entry=ta.price.toFixed(0);
+      const eNum=parseFloat(String(s.entry).replace(/[^0-9.]/g,'').split('-')[0])||ta.price;
+      const atr=ta.atr||(ta.price*0.015);
+      const isSell=(s.verdict||'').toUpperCase()==='SELL';
+      if(!fp(s.target1))s.target1=(isSell?eNum-atr*2:eNum+atr*2).toFixed(0);
+      if(!fp(s.target2))s.target2=(isSell?eNum-atr*4:eNum+atr*4).toFixed(0);
+      if(!fp(s.stoploss))s.stoploss=(isSell?eNum+atr*1.5:eNum-atr*1.5).toFixed(0);
+      if(!s.upside||s.upside==='')s.upside=(Math.abs(parseFloat(s.target1)-eNum)/eNum*100).toFixed(1)+'%';
+    }
     const v=(s.verdict||'HOLD').toUpperCase().replace(/[^A-Z&-]/g,'');
     const tt=(s.tradetype||'SWING').toUpperCase();
     const mx=s.metrics||{};
