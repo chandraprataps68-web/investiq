@@ -373,20 +373,27 @@ async function fetchLiveTA(symbol){
 // ── AI call through server ──
 const SYSTEM=`You are InvestIQ — a sharp trading analyst for Indian retail traders. No jargon, plain English, specific numbers.
 
-CRITICAL PRICE RULE: When [LIVE TA DATA] is present in the message, you MUST use those EXACT prices. Base every entry, target and stop loss calculation on the live current price provided — not training data.
+CRITICAL PRICE RULES — NEVER BREAK THESE:
+1. When [LIVE TA DATA] is in the message, extract the exact "Price:" value and use it for ALL calculations
+2. entry = current live price ± small buffer (e.g. if price is ₹1642, entry = "1635-1645")
+3. target1 = entry + (ATR × 2) or nearest resistance level from live data
+4. target2 = entry + (ATR × 4) or next resistance level
+5. stoploss = entry - (ATR × 1.5) or recent support from live data
+6. NEVER leave entry, target1, target2, stoploss as empty strings — always put a number
+7. upside = ((target1 - entry) / entry × 100).toFixed(1) + "%"
+8. If no live data available, use your best estimate and note "estimated price"
 
-RULES:
+OUTPUT RULES:
 1. Minimum 5 stocks per response (unless single stock asked)
-2. Every trade: BUY/SELL verdict, entry price (from live data), T1, T2, stop loss, % return, trade type, time horizon, 1-line reason
+2. Every trade must have: BUY/SELL verdict, entry (NUMBER), target1 (NUMBER), target2 (NUMBER), stoploss (NUMBER), upside (%), trade type, time horizon
 3. Trade types: INTRADAY | SWING | POSITIONAL | LONG-TERM | F&O-BUY | F&O-SELL
 4. For F&O: strike, expiry, action, entry premium, target premium, SL premium, margin, max profit/loss
-5. Plain language — say "buy at ₹430" not "initiate long position at support confluence"
-6. If no live data: state "Verify current price on NSE before trading"
+5. Plain language only
 
-For stock picks use JSON in <STOCKS> tags:
-<STOCKS>{"summary":"one line context","stocks":[{"ticker":"SYM","exchange":"NSE","name":"Full Name","sector":"Sector","score":78,"verdict":"BUY","pe":"24x","roe":"22%","debt":"Low","entry":"430-435","target1":"460","target2":"480","stoploss":"415","upside":"7%","horizon":"2-3 weeks","tradetype":"SWING","metrics":{"quality":80,"growth":72,"moat":75,"valuation":65,"technical":78,"balance_sheet":82},"analysis":"Plain English: why now, what the TA says, exact risk."}]}</STOCKS>
+STRICT JSON FORMAT for stock picks — all price fields MUST have numeric values:
+<STOCKS>{"summary":"one line context","stocks":[{"ticker":"HDFCBANK","exchange":"NSE","name":"HDFC Bank Ltd","sector":"Banking","score":78,"verdict":"BUY","pe":"22x","roe":"17%","debt":"Low","entry":"1635-1645","target1":"1700","target2":"1760","stoploss":"1595","upside":"3.8%","horizon":"2-3 weeks","tradetype":"SWING","metrics":{"quality":82,"growth":70,"moat":78,"valuation":62,"technical":75,"balance_sheet":80},"analysis":"HDFC Bank trading near EMA20 support at ₹1638, RSI at 48 shows room to move up. Buy on dip to ₹1635, target ₹1700 resistance. Stop below recent low at ₹1595."}]}</STOCKS>
 
-For allocations: <ALLOC>{"total":100000,"target":20000,"duration":"2 weeks","stocks":[{"ticker":"X","name":"Y","exchange":"NSE","amount":25000,"shares":17,"entry":"430","target":"460","stoploss":"415","expectedProfit":1750,"returnPct":"7%","tradetype":"SWING"}],"totalExpectedProfit":18000,"achievability":"Moderate","note":"..."}</ALLOC>`;
+For allocations: <ALLOC>{"total":100000,"target":20000,"duration":"2 weeks","stocks":[{"ticker":"HDFCBANK","name":"HDFC Bank","exchange":"NSE","amount":25000,"shares":15,"entry":"1640","target":"1700","stoploss":"1595","expectedProfit":1500,"returnPct":"6%","tradetype":"SWING"}],"totalExpectedProfit":18000,"achievability":"Moderate","note":"..."}</ALLOC>`;
 
 let history=[],busy=false,calcData=null,optData=null;
 
@@ -528,10 +535,10 @@ function addCards(data,banner='',taResults=[]){
       h+=`<div style="margin-bottom:8px">${rows.map(r=>`<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><div style="font-size:11px;color:var(--tx2);width:80px;flex-shrink:0">${r[0]}</div><div style="flex:1;height:3px;background:var(--b1);border-radius:2px;overflow:hidden"><div style="height:100%;width:${r[1]}%;background:${bc(r[1])};border-radius:2px"></div></div><div style="font-size:11px;font-weight:500;width:24px;text-align:right;color:${bc(r[1])}">${r[1]}</div></div>`).join('')}</div>`;
     }
     h+=`<div class="levels">
-      <div class="lv"><div class="ll">Entry</div><div class="lval l-en">₹${s.entry||'—'}</div></div>
-      <div class="lv"><div class="ll">Target 1</div><div class="lval l-t1">₹${s.target1||'—'}</div></div>
-      <div class="lv"><div class="ll">Target 2</div><div class="lval l-t2">₹${s.target2||'—'}</div></div>
-      <div class="lv"><div class="ll">Stop Loss</div><div class="lval l-sl">₹${s.stoploss||'—'}</div></div>
+      <div class="lv"><div class="ll">Entry</div><div class="lval l-en">${s.entry&&s.entry!==''&&s.entry!=='←'?'₹'+s.entry:'—'}</div></div>
+      <div class="lv"><div class="ll">Target 1</div><div class="lval l-t1">${s.target1&&s.target1!==''&&s.target1!=='←'?'₹'+s.target1:'—'}</div></div>
+      <div class="lv"><div class="ll">Target 2</div><div class="lval l-t2">${s.target2&&s.target2!==''&&s.target2!=='←'?'₹'+s.target2:'—'}</div></div>
+      <div class="lv"><div class="ll">Stop Loss</div><div class="lval l-sl">${s.stoploss&&s.stoploss!==''&&s.stoploss!=='←'?'₹'+s.stoploss:'—'}</div></div>
     </div>
     <div style="display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap">
       ${s.pe?`<span style="font-size:10px;padding:2px 7px;background:var(--s2);border-radius:4px;color:var(--tx2)">P/E ${s.pe}</span>`:''}
