@@ -642,6 +642,12 @@ function updateTicker(d){
 loadGlobal();
 setInterval(loadGlobal,180000);
 
+// Ping server every 14 min to prevent Render free tier sleep
+function pingServer(){
+  fetch('/api/health').catch(function(){});
+}
+setInterval(pingServer, 14 * 60 * 1000);
+
 // ═══════════════════════════════════════════════
 // SPARKLINE
 // ═══════════════════════════════════════════════
@@ -758,12 +764,15 @@ async function send(){
 
   history.push({role:'user',content:q+lCtx});
   updateLoad(lid,'Analysing with AI...');
+  // Show "waking up" message if slow (Render free tier cold start)
+  var wakeTimer=setTimeout(function(){updateLoad(lid,'Waking up server... (first request after inactivity takes ~30s)')},10000);
 
   try{
     var msgs=[{role:'system',content:SYS}];
     history.forEach(function(h){msgs.push(h)});
-    var r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,provider:'groq'})});
+    var r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,provider:'groq'}),signal:AbortSignal.timeout(75000)});
     var data=await r.json();
+    clearTimeout(wakeTimer);
     removeEl(lid);
     if(data.error)throw new Error(data.error);
     var text=data.text||'';
@@ -773,12 +782,12 @@ async function send(){
       if(m){try{addCards(JSON.parse(m[1].trim()),banner,taR)}catch(e){addMsg('ai',text.replace(/<STOCKS>[\s\S]*?<\/STOCKS>/g,''),banner)}}
       else addMsg('ai',text,banner)
     }else addMsg('ai',text,banner)
-  }catch(e){removeEl(lid);addErr('Error: '+e.message);history.pop()}
+  }catch(e){clearTimeout(wakeTimer);removeEl(lid);addErr(e.name==='TimeoutError'||e.message.includes('timeout')?'Request timed out. The server may be waking up — please try again in 30 seconds.':'Error: '+e.message);history.pop()}
   busy=false
 }
 
 async function callAI(msgs){
-  var r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,provider:'groq'})});
+  var r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,provider:'groq'}),signal:AbortSignal.timeout(75000)});
   var d=await r.json();if(d.error)throw new Error(d.error);return d.text||''
 }
 
