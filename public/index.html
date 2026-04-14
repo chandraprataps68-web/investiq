@@ -504,6 +504,10 @@ body{background:var(--bg);color:var(--tx);font-family:var(--font);font-size:14px
 </div>
 
 <script>
+// AI key stored in localStorage (persists across sessions)
+function getAIKey(){return localStorage.getItem('iq_ai_key')||''}
+function setAIKey(k){localStorage.setItem('iq_ai_key',k)}
+
 // ═══════════════════════════════════════════════
 // TA ENGINE
 // ═══════════════════════════════════════════════
@@ -924,9 +928,7 @@ async function send(){
   busy=false
 }
 
-// AI key stored in browser sessionStorage (never sent to server)
-function getAIKey(){return sessionStorage.getItem('iq_ai_key')||''}
-function setAIKey(k){sessionStorage.setItem('iq_ai_key',k)}
+// getAIKey/setAIKey moved to top of script
 
 async function callAI(msgs){
   var key=getAIKey();
