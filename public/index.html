@@ -545,8 +545,8 @@ function extractSyms(q){
 // ═══════════════════════════════════════════════
 async function fetchTA(sym){
   try{
-    var r=await fetch('/api/quote/'+encodeURIComponent(sym),{signal:AbortSignal.timeout(8000)});
-    if(!r.ok)return null;
+    var r=await fetch('/api/quote/'+encodeURIComponent(sym),{signal:AbortSignal.timeout(5000)});
+    if(!r.ok)throw new Error('server error');
     var d=await r.json();
     if(!d.closes||d.closes.length<20)return null;
     var closes=d.closes,highs=d.highs,lows=d.lows,price=d.price;
@@ -569,12 +569,82 @@ async function fetchTA(sym){
 var gcache=null;
 
 async function loadGlobal(){
+  // Try server first (best data), then direct Yahoo Finance as fallback
   try{
-    var r=await fetch('/api/global-markets',{signal:AbortSignal.timeout(10000)});
+    var r=await fetch('/api/global-markets',{signal:AbortSignal.timeout(8000)});
     if(!r.ok)throw new Error('HTTP '+r.status);
     var d=await r.json();
-    if(d&&d.markets&&d.markets.length>0){gcache=d;renderDash(d);updateTicker(d)}
-  }catch(e){if(gcache){renderDash(gcache);updateTicker(gcache)}}
+    if(d&&d.markets&&d.markets.length>0){gcache=d;renderDash(d);updateTicker(d);return}
+  }catch(e){}
+  // Server sleeping or failed — fetch key markets directly
+  try{
+    await loadGlobalDirect();
+  }catch(e){
+    if(gcache){renderDash(gcache);updateTicker(gcache)}
+  }
+}
+
+async function fetchYahooQuote(sym){
+  var proxies=[
+    'https://api.allorigins.win/get?url='+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=2d'),
+    'https://corsproxy.io/?'+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=2d'),
+  ];
+  for(var i=0;i<proxies.length;i++){
+    try{
+      var r=await fetch(proxies[i],{signal:AbortSignal.timeout(6000)});
+      var txt=await r.text();
+      var outer=JSON.parse(txt);
+      var data=outer.contents?JSON.parse(outer.contents):outer;
+      var meta=data&&data.chart&&data.chart.result&&data.chart.result[0]&&data.chart.result[0].meta;
+      if(!meta)continue;
+      var price=meta.regularMarketPrice;
+      var prev=meta.previousClose||meta.chartPreviousClose||price;
+      var chg=price-prev;
+      var chgPct=prev?parseFloat(((chg/prev)*100).toFixed(2)):0;
+      return{price:price,prev:prev,chg:chg,chgPct:chgPct};
+    }catch(e){continue}
+  }
+  return null;
+}
+
+async function loadGlobalDirect(){
+  var SYMS={
+    DJI:'%5EDJI',NASDAQ:'%5EIXIC',SP500:'%5EGSPC',VIX:'%5EVIX',
+    GIFTNIFTY:'%5ENSEI',BANKNIFTY:'%5ENSEBANK',INDIAVIX:'%5EINDIAVIX',
+    NIKKEI:'%5EN225',HANGSENG:'%5EHSI',
+    CRUDE:'CL=F',GOLD:'GC=F',DXY:'DX-Y.NYB',USDINR:'USDINR=X',US10Y:'%5ETNX'
+  };
+  var NAMES={DJI:'Dow Jones',NASDAQ:'Nasdaq',SP500:'S&P 500',VIX:'CBOE VIX',
+    GIFTNIFTY:'Nifty 50',BANKNIFTY:'Bank Nifty',INDIAVIX:'India VIX',
+    NIKKEI:'Nikkei 225',HANGSENG:'Hang Seng',
+    CRUDE:'Crude Oil WTI',GOLD:'Gold',DXY:'Dollar Index',USDINR:'USD/INR',US10Y:'US 10Y Yield'};
+  var CATS={DJI:'US',NASDAQ:'US',SP500:'US',VIX:'Fear',
+    GIFTNIFTY:'India',BANKNIFTY:'India',INDIAVIX:'India',
+    NIKKEI:'Asia',HANGSENG:'Asia',
+    CRUDE:'Commodity',GOLD:'Commodity',DXY:'Macro',USDINR:'Forex',US10Y:'Macro'};
+
+  var keys=Object.keys(SYMS);
+  var results=await Promise.allSettled(keys.map(function(k){
+    return fetchYahooQuote(SYMS[k]).then(function(q){
+      return q?Object.assign({key:k,name:NAMES[k],cat:CATS[k]},q):null;
+    });
+  }));
+  var markets=results.map(function(r){return r.status==='fulfilled'?r.value:null}).filter(Boolean);
+  if(markets.length===0)return;
+
+  var usM=markets.filter(function(m){return m.cat==='US'});
+  var avgUS=usM.length?parseFloat((usM.reduce(function(s,m){return s+m.chgPct},0)/usM.length).toFixed(2)):0;
+
+  // Simple mood
+  var mood=[];
+  if(avgUS>0.5)mood.push('US markets UP '+avgUS+'% — positive for Indian markets');
+  else if(avgUS<-0.5)mood.push('US markets DOWN '+Math.abs(avgUS)+'% — expect selling in India');
+  else mood.push('US markets flat — neutral for India');
+  var vix=markets.find(function(m){return m.key==='VIX'});
+  if(vix)mood.push(vix.price>25?'VIX '+vix.price.toFixed(1)+' HIGH — sell options only':vix.price<15?'VIX '+vix.price.toFixed(1)+' LOW — buy options cheap':'VIX '+vix.price.toFixed(1)+' normal range');
+
+  var d={markets:markets,sentiment:avgUS>0.3?'BULLISH':avgUS<-0.3?'BEARISH':'NEUTRAL',mood:mood,avgUSChg:avgUS.toString()};
+  gcache=d;renderDash(d);updateTicker(d);
 }
 
 function cStr(v){var n=parseFloat(v);return(n>=0?'▲':'▼')+Math.abs(n).toFixed(2)+'%'}
