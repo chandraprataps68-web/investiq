@@ -350,13 +350,32 @@ body{background:var(--bg);color:var(--tx);font-family:var(--font);font-size:14px
     <div class="chat-col">
       <div class="msgs" id="msgs">
         <div class="welcome" id="welcome">
-          <div class="w-logo">Invest<em>IQ</em> <span style="font-size:14px;color:var(--tx3);font-weight:400">Pro</span></div>
-          <div class="w-sub">Live NSE/BSE prices · Global market intelligence · Real RSI/MACD/EMA · AI-powered trade setups with entry, target &amp; stop loss</div>
-          <div class="sug-grid">
-            <div class="sug" onclick="ask('Full live technical analysis of Reliance Industries — RSI, MACD, EMA, global cues, entry, target, SL')"><div class="sug-ico">📈</div><div class="sug-t">Analyse Reliance live</div><div class="sug-d">Full TA + global context + trade setup</div></div>
-            <div class="sug" onclick="ask('Best Nifty options trade this week considering current VIX and global market direction')"><div class="sug-ico">⚡</div><div class="sug-t">Nifty options strategy</div><div class="sug-d">VIX-aware with exact strikes</div></div>
-            <div class="sug" onclick="ask('Which sectors have FII inflows right now? Sector rotation analysis and best stocks in each sector')"><div class="sug-ico">🔄</div><div class="sug-t">Sector rotation &amp; FII flow</div><div class="sug-d">Where smart money is moving</div></div>
-            <div class="sug" onclick="ask('5 hidden gem NSE stocks — small cap, strong fundamentals, undervalued, high promoter holding')"><div class="sug-ico">💎</div><div class="sug-t">Hidden gems scanner</div><div class="sug-d">High-potential undiscovered stocks</div></div>
+          <!-- KEY SETUP - shown by CSS when no key, hidden when key exists -->
+          <div id="keySetupBox" style="max-width:420px;width:100%;text-align:left">
+            <div style="font-size:26px;font-weight:700;letter-spacing:-1px;margin-bottom:5px;text-align:center">Invest<em style="color:var(--accent);font-style:normal">IQ</em> Pro</div>
+            <div style="font-size:12px;color:var(--tx2);margin-bottom:20px;text-align:center;line-height:1.6">Enter your free AI API key to get started</div>
+            <div style="background:var(--s2);border:1px solid var(--b1);border-radius:10px;padding:16px;margin-bottom:10px">
+              <div style="font-size:11px;color:var(--accent);margin-bottom:4px;font-weight:600">RECOMMENDED → Google Gemini (Free · 1-3s responses)</div>
+              <div style="font-size:11px;color:var(--tx2);margin-bottom:12px;line-height:1.5">Get free key at: <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent)">aistudio.google.com/apikey</a><br>Also works with Groq key from <a href="https://console.groq.com/keys" target="_blank" style="color:var(--tx2)">console.groq.com/keys</a></div>
+              <input id="setup-key" type="text" placeholder="Paste AIzaSy... (Gemini) or gsk_... (Groq) key here"
+                style="width:100%;padding:10px 12px;font-size:13px;background:var(--s3);border:1px solid var(--b2);border-radius:7px;color:var(--tx);font-family:var(--font);outline:none;margin-bottom:8px;display:block"/>
+              <div id="setup-err" style="font-size:11px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+              <button id="setup-btn"
+                style="width:100%;padding:11px;background:linear-gradient(135deg,#00e5ff,#2979ff);color:#070b0f;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">
+                Start Trading →
+              </button>
+            </div>
+          </div>
+          <!-- SUGGESTIONS - shown after key is set -->
+          <div id="sugBox" style="display:none;flex-direction:column;align-items:center;width:100%">
+            <div class="w-logo">Invest<em>IQ</em> <span style="font-size:14px;color:var(--tx3);font-weight:400">Pro</span></div>
+            <div class="w-sub">Live NSE/BSE prices · Global market intelligence · Real RSI/MACD/EMA · AI-powered trade setups</div>
+            <div class="sug-grid">
+              <div class="sug" onclick="ask('Full live technical analysis of Reliance Industries — RSI, MACD, EMA, global cues, entry, target, SL')"><div class="sug-ico">📈</div><div class="sug-t">Analyse Reliance live</div><div class="sug-d">Full TA + global context + trade setup</div></div>
+              <div class="sug" onclick="ask('Best Nifty options trade this week considering current VIX and global market direction')"><div class="sug-ico">⚡</div><div class="sug-t">Nifty options strategy</div><div class="sug-d">VIX-aware with exact strikes</div></div>
+              <div class="sug" onclick="ask('Which sectors have FII inflows right now? Sector rotation analysis with best stocks')"><div class="sug-ico">🔄</div><div class="sug-t">Sector rotation &amp; FII flow</div><div class="sug-d">Where smart money is moving</div></div>
+              <div class="sug" onclick="ask('5 hidden gem NSE stocks — small cap, strong fundamentals, undervalued')"><div class="sug-ico">💎</div><div class="sug-t">Hidden gems scanner</div><div class="sug-d">High-potential undiscovered stocks</div></div>
+            </div>
           </div>
         </div>
       </div>
@@ -652,8 +671,15 @@ function updateTicker(d){
 // API KEY MANAGEMENT - simple prompt approach
 // ═══════════════════════════════════════════════
 function showKeySetup(){
-  newChat();
-  setTimeout(showInlineSetup,50);
+  // If on welcome screen, show setup form
+  var w=document.getElementById('welcome');
+  if(w){
+    showInlineSetup();
+  } else {
+    // Start fresh
+    newChat();
+    setTimeout(showInlineSetup, 50);
+  }
 }
 
 function updateKeyIndicator(){
@@ -666,42 +692,33 @@ function updateKeyIndicator(){
   }
 }
 
-// On load
-window.addEventListener('load',function(){
-  updateKeyIndicator();
-  if(!getAIKey()){
-    showInlineSetup();
-  }
+// Wire up setup button directly
+document.getElementById('setup-btn').addEventListener('click', submitSetupKey);
+document.getElementById('setup-key').addEventListener('keydown', function(e){
+  if(e.key==='Enter') submitSetupKey();
 });
 
-function showInlineSetup(){
-  var w=document.getElementById('welcome');
-  if(!w)return;
-  w.innerHTML='<div style="max-width:420px;width:100%;text-align:left">'
-    +'<div style="font-size:28px;font-weight:700;letter-spacing:-1px;margin-bottom:6px;text-align:center">Invest<em style="color:var(--accent);font-style:normal">IQ</em> Pro</div>'
-    +'<div style="font-size:12px;color:var(--tx2);margin-bottom:20px;text-align:center;line-height:1.6">Enter your free AI API key to get started.<br>Key saved in your browser — never sent anywhere.</div>'
-    +'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:10px;padding:16px;margin-bottom:10px">'
-    +'<div style="font-size:11px;color:var(--tx2);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Recommended — Google Gemini (Free, Fast)</div>'
-    +'<div style="font-size:11px;color:var(--tx2);margin-bottom:10px;line-height:1.5">1,500 requests/day · 1–3 second responses<br>'
-    +'Get free key: <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent)">aistudio.google.com/apikey</a></div>'
-    +'<input id="setup-key" type="text" placeholder="Paste your AIzaSy... or gsk_... key here" '
-    +'style="width:100%;padding:10px 12px;font-size:13px;background:var(--s3);border:1px solid var(--b2);border-radius:7px;color:var(--tx);font-family:var(--font);outline:none;margin-bottom:8px"/>'
-    +'<div id="setup-err" style="font-size:11px;color:var(--red);min-height:16px;margin-bottom:6px"></div>'
-    +'<button onclick="submitSetupKey()" '
-    +'style="width:100%;padding:10px;background:linear-gradient(135deg,var(--accent),var(--blue));color:#070b0f;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">'
-    +'Start Trading →</button>'
-    +'</div>'
-    +'<div style="font-size:10px;color:var(--tx3);text-align:center">Also works with Groq key (gsk_...) from <a href="https://console.groq.com/keys" target="_blank" style="color:var(--tx2)">console.groq.com</a></div>'
-    +'</div>';
+// On load - show correct panel
+(function(){
+  updateKeyIndicator();
+  if(getAIKey()){
+    // Key exists - show suggestions, hide setup
+    var sb=document.getElementById('keySetupBox');
+    var sg=document.getElementById('sugBox');
+    if(sb) sb.style.display='none';
+    if(sg){ sg.style.display='flex'; }
+  }
+  // else: setup form is already visible in HTML by default
+})();
 
-  // Allow Enter key on the input
-  setTimeout(function(){
-    var inp=document.getElementById('setup-key');
-    if(inp){
-      inp.addEventListener('keydown',function(e){if(e.key==='Enter')submitSetupKey()});
-      inp.focus();
-    }
-  },100);
+function showInlineSetup(){
+  // Reset welcome to show setup form
+  var sb=document.getElementById('keySetupBox');
+  var sg=document.getElementById('sugBox');
+  if(sb) sb.style.display='block';
+  if(sg) sg.style.display='none';
+  var inp=document.getElementById('setup-key');
+  if(inp){ inp.value=''; inp.focus(); }
 }
 
 function submitSetupKey(){
@@ -711,12 +728,15 @@ function submitSetupKey(){
   var key=inp.value.trim();
   if(!key){if(err)err.textContent='Please paste your API key';return}
   if(!key.startsWith('AIza')&&!key.startsWith('gsk_')){
-    if(err)err.textContent='Key must start with AIzaSy (Gemini) or gsk_ (Groq)';return;
+    if(err)err.textContent='Key must start with AIzaSy... (Gemini) or gsk_... (Groq)';return;
   }
   setAIKey(key);
   updateKeyIndicator();
-  // Restore welcome screen
-  newChat();
+  // Show suggestions, hide setup
+  var sb=document.getElementById('keySetupBox');
+  var sg=document.getElementById('sugBox');
+  if(sb) sb.style.display='none';
+  if(sg){ sg.style.display='flex'; }
 }
 
 loadGlobal();
