@@ -692,11 +692,11 @@ function updateKeyIndicator(){
   }
 }
 
-// Wire up setup button directly
-document.getElementById('setup-btn').addEventListener('click', submitSetupKey);
-document.getElementById('setup-key').addEventListener('keydown', function(e){
-  if(e.key==='Enter') submitSetupKey();
-});
+// Wire up setup button safely
+var _sb=document.getElementById('setup-btn');
+var _sk=document.getElementById('setup-key');
+if(_sb) _sb.addEventListener('click', submitSetupKey);
+if(_sk) _sk.addEventListener('keydown', function(e){ if(e.key==='Enter') submitSetupKey(); });
 
 // On load - show correct panel
 (function(){
