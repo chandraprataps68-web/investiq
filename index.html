@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InvestIQ Pro — Smart Trading Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+/* ─── CSS Variables / Theme ─────────────────────────────────────── */
+:root {
+  --bg-primary: #0a0e17;
+  --bg-secondary: #111827;
+  --bg-card: #151d2e;
+  --bg-card-hover: #1a2438;
+  --bg-input: #0d1320;
+  --border: #1e293b;
+  --border-focus: #3b82f6;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent: #3b82f6;
+  --accent-glow: rgba(59,130,246,0.15);
+  --green: #22c55e;
+  --green-bg: rgba(34,197,94,0.08);
+  --red: #ef4444;
+  --red-bg: rgba(239,68,68,0.08);
+  --gold: #f59e0b;
+  --gold-bg: rgba(245,158,11,0.08);
+  --purple: #a78bfa;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.3);
+  --font-sans: 'DM Sans', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── Reset & Base ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ─── Header ────────────────────────────────────────────────────── */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10,14,23,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+}
+.header-inner {
+  max-width: 1440px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 60px;
+}
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 700; font-size: 18px; letter-spacing: -0.5px;
+}
+.logo-icon {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), #8b5cf6);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 800; color: white;
+}
+.logo span { color: var(--accent); }
+
+/* Search bar in header */
+.search-wrap {
+  position: relative; flex: 0 1 420px;
+}
+.search-input {
+  width: 100%; padding: 8px 16px 8px 40px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 20px; color: var(--text-primary);
+  font-family: var(--font-sans); font-size: 14px;
+  transition: border-color var(--transition);
+  outline: none;
+}
+.search-input:focus { border-color: var(--border-focus); }
+.search-icon {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); font-size: 14px; pointer-events: none;
+}
+.search-results {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  max-height: 320px; overflow-y: auto; display: none; z-index: 200;
+}
+.search-results.active { display: block; }
+.search-item {
+  padding: 10px 16px; cursor: pointer; display: flex;
+  justify-content: space-between; align-items: center;
+  transition: background var(--transition);
+}
+.search-item:hover { background: var(--bg-card-hover); }
+.search-item .sym { font-weight: 600; font-family: var(--font-mono); font-size: 13px; }
+.search-item .name { color: var(--text-secondary); font-size: 12px; }
+.search-item .exch { color: var(--text-muted); font-size: 11px; font-family: var(--font-mono); }
+
+/* Nav tabs */
+.nav-tabs { display: flex; gap: 2px; }
+.nav-tab {
+  padding: 8px 16px; border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  color: var(--text-secondary); background: transparent;
+  border: none; transition: all var(--transition);
+}
+.nav-tab:hover { color: var(--text-primary); background: var(--bg-card); }
+.nav-tab.active { color: var(--accent); background: var(--accent-glow); }
+
+/* ─── Main Layout ───────────────────────────────────────────────── */
+.main { max-width: 1440px; margin: 0 auto; padding: 20px 24px; }
+
+/* Tab panels */
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ─── Cards / Containers ────────────────────────────────────────── */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px;
+  transition: border-color var(--transition);
+}
+.card:hover { border-color: rgba(59,130,246,0.2); }
+.card-title {
+  font-size: 13px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.6px; color: var(--text-muted); margin-bottom: 16px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+/* ─── Global Markets Grid ───────────────────────────────────────── */
+.markets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px; margin-bottom: 24px;
+}
+.market-tile {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  cursor: pointer; transition: all var(--transition);
+}
+.market-tile:hover { border-color: var(--accent); transform: translateY(-1px); }
+.market-tile .idx-name {
+  font-size: 12px; color: var(--text-secondary);
+  margin-bottom: 4px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.market-tile .idx-price {
+  font-size: 20px; font-weight: 700;
+  font-family: var(--font-mono); margin-bottom: 2px;
+}
+.market-tile .idx-change {
+  font-size: 13px; font-weight: 500; font-family: var(--font-mono);
+}
+.up { color: var(--green); }
+.down { color: var(--red); }
+
+/* ─── Two-column layout ─────────────────────────────────────────── */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 20px;
+}
+
+/* ─── Chart area ────────────────────────────────────────────────── */
+.chart-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+}
+.chart-symbol-info { display: flex; align-items: baseline; gap: 12px; }
+.chart-sym { font-size: 22px; font-weight: 700; font-family: var(--font-mono); }
+.chart-price-big { font-size: 22px; font-weight: 600; font-family: var(--font-mono); }
+.chart-change-big { font-size: 14px; font-weight: 500; font-family: var(--font-mono); }
+
+.range-btns { display: flex; gap: 4px; }
+.range-btn {
+  padding: 4px 12px; border-radius: 6px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  color: var(--text-muted); background: transparent;
+  border: 1px solid transparent; font-family: var(--font-mono);
+  transition: all var(--transition);
+}
+.range-btn:hover { color: var(--text-primary); background: var(--bg-card-hover); }
+.range-btn.active { color: var(--accent); background: var(--accent-glow); border-color: var(--accent); }
+
+#chartContainer {
+  width: 100%; height: 420px;
+  border-radius: var(--radius-sm); overflow: hidden;
+}
+
+/* ─── Watchlist sidebar ─────────────────────────────────────────── */
+.watchlist-add {
+  display: flex; gap: 8px; margin-bottom: 12px;
+}
+.watchlist-add input {
+  flex: 1; padding: 8px 12px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 13px; outline: none;
+}
+.watchlist-add input:focus { border-color: var(--border-focus); }
+.watchlist-add button, .btn {
+  padding: 8px 14px; border-radius: var(--radius-sm);
+  background: var(--accent); color: white; border: none;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: opacity var(--transition);
+}
+.btn:hover { opacity: 0.85; }
+.btn-outline {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.btn-outline:hover { border-color: var(--text-muted); color: var(--text-primary); background: transparent; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-danger { background: var(--red); }
+
+.watchlist-items { display: flex; flex-direction: column; gap: 4px; }
+.watch-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: background var(--transition);
+}
+.watch-item:hover { background: var(--bg-card-hover); }
+.watch-item.selected { background: var(--accent-glow); }
+.watch-item .wi-sym { font-weight: 600; font-family: var(--font-mono); font-size: 13px; }
+.watch-item .wi-name { font-size: 11px; color: var(--text-muted); }
+.watch-item .wi-price { font-family: var(--font-mono); font-size: 13px; font-weight: 500; text-align: right; }
+.watch-item .wi-chg { font-family: var(--font-mono); font-size: 11px; text-align: right; }
+.watch-item .wi-remove {
+  opacity: 0; margin-left: 8px; color: var(--red);
+  cursor: pointer; font-size: 14px; transition: opacity var(--transition);
+}
+.watch-item:hover .wi-remove { opacity: 1; }
+
+.watchlist-empty {
+  text-align: center; padding: 30px 16px; color: var(--text-muted); font-size: 13px;
+}
+
+/* ─── Portfolio Tab ─────────────────────────────────────────────── */
+.portfolio-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px; margin-bottom: 24px;
+}
+.summary-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px;
+}
+.summary-card .label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.summary-card .value { font-size: 24px; font-weight: 700; font-family: var(--font-mono); }
+
+.portfolio-form {
+  display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end;
+}
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.form-group input {
+  padding: 8px 12px; background: var(--bg-input);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text-primary); font-family: var(--font-mono);
+  font-size: 13px; outline: none; width: 140px;
+}
+.form-group input:focus { border-color: var(--border-focus); }
+
+.holdings-table {
+  width: 100%; border-collapse: collapse;
+}
+.holdings-table th {
+  text-align: left; padding: 10px 12px;
+  font-size: 11px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+}
+.holdings-table td {
+  padding: 12px; font-size: 13px;
+  border-bottom: 1px solid rgba(30,41,59,0.5);
+  font-family: var(--font-mono);
+}
+.holdings-table tr:hover td { background: var(--bg-card-hover); }
+
+/* ─── AI Panel ──────────────────────────────────────────────────── */
+.ai-panel {
+  margin-top: 20px;
+}
+.ai-chat-box {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+}
+.ai-messages {
+  max-height: 300px; overflow-y: auto; margin-bottom: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.ai-msg {
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  font-size: 13px; line-height: 1.6; max-width: 85%;
+}
+.ai-msg.user {
+  background: var(--accent-glow); align-self: flex-end;
+  border: 1px solid rgba(59,130,246,0.2);
+}
+.ai-msg.assistant {
+  background: var(--bg-secondary); align-self: flex-start;
+  border: 1px solid var(--border);
+}
+.ai-msg.assistant pre {
+  background: var(--bg-primary); padding: 8px; border-radius: 6px;
+  overflow-x: auto; font-size: 12px; margin-top: 6px;
+}
+.ai-input-row { display: flex; gap: 8px; }
+.ai-input-row input {
+  flex: 1; padding: 10px 14px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  font-family: var(--font-sans); font-size: 14px; outline: none;
+}
+.ai-input-row input:focus { border-color: var(--border-focus); }
+
+/* ─── Gemini Key Modal ──────────────────────────────────────────── */
+.key-badge {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-muted); cursor: pointer;
+}
+.key-badge .dot { width: 7px; height: 7px; border-radius: 50%; }
+.key-badge .dot.on { background: var(--green); }
+.key-badge .dot.off { background: var(--red); }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(6px); display: none; z-index: 500;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 28px;
+  width: 90%; max-width: 400px; box-shadow: var(--shadow);
+}
+.modal h3 { margin-bottom: 8px; font-size: 16px; }
+.modal p { font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; }
+.modal input {
+  width: 100%; padding: 10px 14px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 13px; outline: none;
+  margin-bottom: 12px;
+}
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ─── Loader ────────────────────────────────────────────────────── */
+.loader {
+  display: inline-block; width: 18px; height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-card-hover) 50%, var(--bg-card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ─── Responsive ────────────────────────────────────────────────── */
+@media (max-width: 960px) {
+  .dash-grid { grid-template-columns: 1fr; }
+  .header-inner { flex-wrap: wrap; height: auto; padding: 12px 0; gap: 8px; }
+  .search-wrap { flex: 1 1 100%; order: 3; }
+  .nav-tabs { order: 2; }
+}
+@media (max-width: 600px) {
+  .main { padding: 12px; }
+  .markets-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  #chartContainer { height: 300px; }
+  .portfolio-form { flex-direction: column; }
+  .form-group input { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════ HEADER ═══════════════════════ -->
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-icon">IQ</div>
+      Invest<span>IQ</span> Pro
+    </div>
+
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" id="searchInput" placeholder="Search stocks, indices, crypto…" autocomplete="off">
+      <div class="search-results" id="searchResults"></div>
+    </div>
+
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
+      <button class="nav-tab" data-tab="portfolio">Portfolio</button>
+      <button class="nav-tab" data-tab="ai">AI Analyst</button>
+    </nav>
+
+    <div class="key-badge" id="keyBadge" title="Click to set Gemini API key">
+      <span class="dot off" id="keyDot"></span>
+      <span id="keyLabel">No AI key</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════ MAIN ═══════════════════════ -->
+<div class="main">
+
+  <!-- ─── DASHBOARD TAB ─────────────────────────────── -->
+  <div class="tab-panel active" id="panel-dashboard">
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-title">Global Markets</div>
+      <div class="markets-grid" id="marketsGrid">
+        <div class="skeleton" style="height:90px"></div>
+        <div class="skeleton" style="height:90px"></div>
+        <div class="skeleton" style="height:90px"></div>
+        <div class="skeleton" style="height:90px"></div>
+      </div>
+    </div>
+
+    <div class="dash-grid">
+      <!-- Chart Column -->
+      <div class="card">
+        <div class="chart-header">
+          <div class="chart-symbol-info">
+            <span class="chart-sym" id="chartSymbol">^NSEI</span>
+            <span class="chart-price-big" id="chartPrice">—</span>
+            <span class="chart-change-big" id="chartChange"></span>
+          </div>
+          <div class="range-btns">
+            <button class="range-btn" data-range="1d" data-interval="5m">1D</button>
+            <button class="range-btn" data-range="5d" data-interval="15m">5D</button>
+            <button class="range-btn" data-range="1mo" data-interval="1d">1M</button>
+            <button class="range-btn" data-range="6mo" data-interval="1d">6M</button>
+            <button class="range-btn active" data-range="1y" data-interval="1d">1Y</button>
+            <button class="range-btn" data-range="5y" data-interval="1wk">5Y</button>
+          </div>
+        </div>
+        <div id="chartContainer"></div>
+      </div>
+
+      <!-- Watchlist Column -->
+      <div class="card">
+        <div class="card-title">
+          Watchlist
+          <span style="font-size:11px;color:var(--text-muted);font-weight:400" id="watchCount">0 items</span>
+        </div>
+        <div class="watchlist-add">
+          <input id="watchInput" placeholder="Add ticker, e.g. RELIANCE.NS" />
+          <button class="btn btn-sm" onclick="addToWatchlist()">+ Add</button>
+        </div>
+        <div class="watchlist-items" id="watchlistItems">
+          <div class="watchlist-empty">Your watchlist is empty.<br>Add stocks above to track them.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── PORTFOLIO TAB ─────────────────────────────── -->
+  <div class="tab-panel" id="panel-portfolio">
+    <div class="portfolio-summary" id="portfolioSummary">
+      <div class="summary-card">
+        <div class="label">Total Value</div>
+        <div class="value" id="pTotalValue">₹0.00</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Invested</div>
+        <div class="value" id="pInvested">₹0.00</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Total P&L</div>
+        <div class="value" id="pPnl">₹0.00</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Day Change</div>
+        <div class="value" id="pDayChange">₹0.00</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Add Holding</div>
+      <div class="portfolio-form">
+        <div class="form-group">
+          <label>Ticker</label>
+          <input id="pfTicker" placeholder="RELIANCE.NS" />
+        </div>
+        <div class="form-group">
+          <label>Quantity</label>
+          <input id="pfQty" type="number" placeholder="10" />
+        </div>
+        <div class="form-group">
+          <label>Avg. Buy Price</label>
+          <input id="pfPrice" type="number" step="0.01" placeholder="2500.00" />
+        </div>
+        <button class="btn" onclick="addHolding()" style="align-self:flex-end">Add Holding</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:20px; overflow-x:auto;">
+      <div class="card-title">
+        Holdings
+        <button class="btn btn-sm btn-outline" onclick="refreshPortfolio()">↻ Refresh Prices</button>
+      </div>
+      <table class="holdings-table">
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Qty</th>
+            <th>Avg Cost</th>
+            <th>CMP</th>
+            <th>Value</th>
+            <th>P&L</th>
+            <th>P&L %</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="holdingsBody">
+          <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px;">No holdings added yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ─── AI TAB ─────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-ai">
+    <div class="card">
+      <div class="card-title">AI Market Analyst (Gemini)</div>
+      <div class="ai-chat-box">
+        <div class="ai-messages" id="aiMessages">
+          <div class="ai-msg assistant">
+            Hello! I'm your AI market analyst. Ask me about any stock, market trend, or investment strategy. Make sure your Gemini API key is set (top-right corner).
+          </div>
+        </div>
+        <div class="ai-input-row">
+          <input id="aiInput" placeholder="Ask about markets, stocks, strategies…" onkeydown="if(event.key==='Enter')sendAI()" />
+          <button class="btn" onclick="sendAI()">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════ KEY MODAL ═══════════════════════ -->
+<div class="modal-overlay" id="keyModal">
+  <div class="modal">
+    <h3>Gemini API Key</h3>
+    <p>Enter your Google Gemini API key for AI features. It's stored only in your browser.</p>
+    <input id="keyInput" placeholder="AIza…" type="password" />
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeKeyModal()">Cancel</button>
+      <button class="btn" onclick="saveKey()">Save Key</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ JS ═══════════════════════ -->
+<script>
+// ──────────────────────────────────────────────────────────
+//  State
+// ──────────────────────────────────────────────────────────
+const STORE_WATCHLIST = 'iq_watchlist';
+const STORE_PORTFOLIO = 'iq_portfolio';
+const STORE_KEY = 'iq_gemini_key';
+
+let watchlist = JSON.parse(localStorage.getItem(STORE_WATCHLIST) || '[]');
+let portfolio = JSON.parse(localStorage.getItem(STORE_PORTFOLIO) || '[]');
+let geminiKey = localStorage.getItem(STORE_KEY) || '';
+
+let currentSymbol = '^NSEI';
+let currentRange = '1y';
+let currentInterval = '1d';
+let chart = null;
+let candleSeries = null;
+let volumeSeries = null;
+let searchTimeout = null;
+
+// ──────────────────────────────────────────────────────────
+//  Init
+// ──────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  updateKeyBadge();
+  initChart();
+  loadMarkets();
+  renderWatchlist();
+  loadChart(currentSymbol, currentRange, currentInterval);
+  if (portfolio.length) refreshPortfolio();
+
+  // Tab switching
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Range buttons
+  document.querySelectorAll('.range-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentRange = btn.dataset.range;
+      currentInterval = btn.dataset.interval;
+      loadChart(currentSymbol, currentRange, currentInterval);
+    });
+  });
+
+  // Search
+  document.getElementById('searchInput').addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    const q = e.target.value.trim();
+    if (q.length < 1) { document.getElementById('searchResults').classList.remove('active'); return; }
+    searchTimeout = setTimeout(() => searchTickers(q), 300);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-wrap')) {
+      document.getElementById('searchResults').classList.remove('active');
+    }
+  });
+
+  // Key badge
+  document.getElementById('keyBadge').addEventListener('click', () => {
+    document.getElementById('keyModal').classList.add('active');
+    document.getElementById('keyInput').value = geminiKey;
+  });
+
+  // Auto-refresh watchlist prices every 30s
+  setInterval(refreshWatchlistPrices, 30000);
+});
+
+// ──────────────────────────────────────────────────────────
+//  Chart (TradingView Lightweight Charts)
+// ──────────────────────────────────────────────────────────
+function initChart() {
+  const container = document.getElementById('chartContainer');
+  chart = LightweightCharts.createChart(container, {
+    width: container.clientWidth,
+    height: container.clientHeight,
+    layout: {
+      background: { type: 'solid', color: '#151d2e' },
+      textColor: '#94a3b8',
+      fontFamily: "'DM Sans', sans-serif"
+    },
+    grid: {
+      vertLines: { color: 'rgba(30,41,59,0.5)' },
+      horzLines: { color: 'rgba(30,41,59,0.5)' }
+    },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    rightPriceScale: { borderColor: '#1e293b' },
+    timeScale: { borderColor: '#1e293b', timeVisible: true, secondsVisible: false }
+  });
+
+  candleSeries = chart.addCandlestickSeries({
+    upColor: '#22c55e', downColor: '#ef4444',
+    borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+    wickUpColor: '#22c55e', wickDownColor: '#ef4444'
+  });
+
+  volumeSeries = chart.addHistogramSeries({
+    color: '#3b82f6',
+    priceFormat: { type: 'volume' },
+    priceScaleId: '',
+    scaleMargins: { top: 0.85, bottom: 0 }
+  });
+
+  new ResizeObserver(() => {
+    chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+  }).observe(container);
+}
+
+async function loadChart(symbol, range, interval) {
+  try {
+    const res = await fetch(`/api/history/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`);
+    const data = await res.json();
+    if (data.error) { console.error(data.error); return; }
+
+    const candles = data.candles.map(c => ({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close
+    }));
+    const volumes = data.candles.map(c => ({
+      time: c.time,
+      value: c.volume,
+      color: c.close >= c.open ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'
+    }));
+
+    candleSeries.setData(candles);
+    volumeSeries.setData(volumes);
+    chart.timeScale().fitContent();
+
+    // Update header info
+    const last = data.candles[data.candles.length - 1];
+    const prev = data.candles[data.candles.length - 2];
+    if (last) {
+      document.getElementById('chartSymbol').textContent = symbol;
+      document.getElementById('chartPrice').textContent = last.close?.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+      if (prev) {
+        const chg = last.close - prev.close;
+        const pct = ((chg / prev.close) * 100);
+        const el = document.getElementById('chartChange');
+        el.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)} (${pct.toFixed(2)}%)`;
+        el.className = 'chart-change-big ' + (chg >= 0 ? 'up' : 'down');
+      }
+    }
+  } catch (err) {
+    console.error('Chart load error:', err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+//  Global Markets
+// ──────────────────────────────────────────────────────────
+async function loadMarkets() {
+  try {
+    const res = await fetch('/api/markets');
+    const data = await res.json();
+    const grid = document.getElementById('marketsGrid');
+    grid.innerHTML = data.markets.map(m => {
+      const up = (m.change || 0) >= 0;
+      return `
+        <div class="market-tile" onclick="selectSymbol('${m.symbol}')">
+          <div class="idx-name">${m.name || m.symbol}</div>
+          <div class="idx-price">${(m.price || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+          <div class="idx-change ${up ? 'up' : 'down'}">
+            ${up ? '▲' : '▼'} ${Math.abs(m.change || 0).toFixed(2)} (${Math.abs(m.changePercent || 0).toFixed(2)}%)
+          </div>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    document.getElementById('marketsGrid').innerHTML = '<div style="color:var(--text-muted);grid-column:1/-1;text-align:center;padding:20px;">Could not load market data.</div>';
+  }
+}
+
+function selectSymbol(sym) {
+  currentSymbol = sym;
+  loadChart(sym, currentRange, currentInterval);
+}
+
+// ──────────────────────────────────────────────────────────
+//  Search
+// ──────────────────────────────────────────────────────────
+async function searchTickers(q) {
+  try {
+    const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+    const data = await res.json();
+    const box = document.getElementById('searchResults');
+    if (!data.results.length) { box.classList.remove('active'); return; }
+    box.innerHTML = data.results.map(r => `
+      <div class="search-item" onclick="pickSearch('${r.symbol}')">
+        <div>
+          <div class="sym">${r.symbol}</div>
+          <div class="name">${r.name}</div>
+        </div>
+        <div class="exch">${r.exchange || ''}</div>
+      </div>
+    `).join('');
+    box.classList.add('active');
+  } catch (err) {
+    console.error('Search error:', err);
+  }
+}
+
+function pickSearch(sym) {
+  document.getElementById('searchResults').classList.remove('active');
+  document.getElementById('searchInput').value = sym;
+  selectSymbol(sym);
+  // Switch to dashboard
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector('[data-tab="dashboard"]').classList.add('active');
+  document.getElementById('panel-dashboard').classList.add('active');
+}
+
+// ──────────────────────────────────────────────────────────
+//  Persistent Watchlist
+// ──────────────────────────────────────────────────────────
+function saveWatchlist() {
+  localStorage.setItem(STORE_WATCHLIST, JSON.stringify(watchlist));
+}
+
+function addToWatchlist() {
+  const inp = document.getElementById('watchInput');
+  const sym = inp.value.trim().toUpperCase();
+  if (!sym || watchlist.includes(sym)) { inp.value = ''; return; }
+  watchlist.push(sym);
+  saveWatchlist();
+  inp.value = '';
+  renderWatchlist();
+  refreshWatchlistPrices();
+}
+
+function removeFromWatchlist(sym) {
+  watchlist = watchlist.filter(s => s !== sym);
+  saveWatchlist();
+  renderWatchlist();
+}
+
+function renderWatchlist() {
+  const el = document.getElementById('watchlistItems');
+  document.getElementById('watchCount').textContent = watchlist.length + ' items';
+  if (!watchlist.length) {
+    el.innerHTML = '<div class="watchlist-empty">Your watchlist is empty.<br>Add stocks above to track them.</div>';
+    return;
+  }
+  el.innerHTML = watchlist.map(sym => `
+    <div class="watch-item ${sym === currentSymbol ? 'selected' : ''}" onclick="selectSymbol('${sym}')">
+      <div>
+        <div class="wi-sym">${sym}</div>
+        <div class="wi-name" id="wn_${sym.replace(/[^a-zA-Z0-9]/g,'_')}">—</div>
+      </div>
+      <div style="display:flex;align-items:center;">
+        <div>
+          <div class="wi-price" id="wp_${sym.replace(/[^a-zA-Z0-9]/g,'_')}">—</div>
+          <div class="wi-chg" id="wc_${sym.replace(/[^a-zA-Z0-9]/g,'_')}"></div>
+        </div>
+        <span class="wi-remove" onclick="event.stopPropagation();removeFromWatchlist('${sym}')">✕</span>
+      </div>
+    </div>
+  `).join('');
+  refreshWatchlistPrices();
+}
+
+async function refreshWatchlistPrices() {
+  if (!watchlist.length) return;
+  try {
+    const res = await fetch('/api/quote/' + encodeURIComponent(watchlist.join(',')));
+    const data = await res.json();
+    (data.quotes || []).forEach(q => {
+      const key = q.symbol.replace(/[^a-zA-Z0-9]/g, '_');
+      const nameEl = document.getElementById('wn_' + key);
+      const priceEl = document.getElementById('wp_' + key);
+      const chgEl = document.getElementById('wc_' + key);
+      if (nameEl) nameEl.textContent = q.name || '';
+      if (priceEl) priceEl.textContent = (q.price || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+      if (chgEl) {
+        const up = (q.change || 0) >= 0;
+        chgEl.textContent = `${up ? '+' : ''}${(q.change || 0).toFixed(2)} (${(q.changePercent || 0).toFixed(2)}%)`;
+        chgEl.className = 'wi-chg ' + (up ? 'up' : 'down');
+      }
+    });
+  } catch (err) {
+    console.error('Watchlist refresh error:', err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+//  Portfolio
+// ──────────────────────────────────────────────────────────
+function savePortfolio() {
+  localStorage.setItem(STORE_PORTFOLIO, JSON.stringify(portfolio));
+}
+
+function addHolding() {
+  const ticker = document.getElementById('pfTicker').value.trim().toUpperCase();
+  const qty = parseFloat(document.getElementById('pfQty').value);
+  const price = parseFloat(document.getElementById('pfPrice').value);
+  if (!ticker || !qty || !price) return;
+
+  // Check if already exists - merge
+  const existing = portfolio.find(h => h.ticker === ticker);
+  if (existing) {
+    const totalQty = existing.qty + qty;
+    existing.avgPrice = ((existing.avgPrice * existing.qty) + (price * qty)) / totalQty;
+    existing.qty = totalQty;
+  } else {
+    portfolio.push({ ticker, qty, avgPrice: price, cmp: null, change: null });
+  }
+  savePortfolio();
+  document.getElementById('pfTicker').value = '';
+  document.getElementById('pfQty').value = '';
+  document.getElementById('pfPrice').value = '';
+  refreshPortfolio();
+}
+
+function removeHolding(ticker) {
+  portfolio = portfolio.filter(h => h.ticker !== ticker);
+  savePortfolio();
+  renderPortfolioTable();
+  updatePortfolioSummary();
+}
+
+async function refreshPortfolio() {
+  if (!portfolio.length) { renderPortfolioTable(); updatePortfolioSummary(); return; }
+  const tickers = portfolio.map(h => h.ticker).join(',');
+  try {
+    const res = await fetch('/api/quote/' + encodeURIComponent(tickers));
+    const data = await res.json();
+    (data.quotes || []).forEach(q => {
+      const h = portfolio.find(x => x.ticker === q.symbol);
+      if (h) {
+        h.cmp = q.price;
+        h.change = q.change;
+        h.name = q.name;
+      }
+    });
+    savePortfolio();
+  } catch (err) {
+    console.error('Portfolio refresh error:', err);
+  }
+  renderPortfolioTable();
+  updatePortfolioSummary();
+}
+
+function renderPortfolioTable() {
+  const body = document.getElementById('holdingsBody');
+  if (!portfolio.length) {
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px;">No holdings added yet.</td></tr>';
+    return;
+  }
+  body.innerHTML = portfolio.map(h => {
+    const cmp = h.cmp || 0;
+    const val = cmp * h.qty;
+    const cost = h.avgPrice * h.qty;
+    const pnl = val - cost;
+    const pnlPct = cost > 0 ? (pnl / cost * 100) : 0;
+    const up = pnl >= 0;
+    return `
+      <tr>
+        <td>
+          <div style="font-weight:600">${h.ticker}</div>
+          <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-sans)">${h.name || ''}</div>
+        </td>
+        <td>${h.qty}</td>
+        <td>${h.avgPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+        <td>${cmp.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+        <td>${val.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+        <td class="${up ? 'up' : 'down'}">${up ? '+' : ''}${pnl.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+        <td class="${up ? 'up' : 'down'}">${up ? '+' : ''}${pnlPct.toFixed(2)}%</td>
+        <td><button class="btn btn-sm btn-danger" onclick="removeHolding('${h.ticker}')">✕</button></td>
+      </tr>`;
+  }).join('');
+}
+
+function updatePortfolioSummary() {
+  let totalVal = 0, totalCost = 0, dayChg = 0;
+  portfolio.forEach(h => {
+    const cmp = h.cmp || 0;
+    totalVal += cmp * h.qty;
+    totalCost += h.avgPrice * h.qty;
+    dayChg += (h.change || 0) * h.qty;
+  });
+  const pnl = totalVal - totalCost;
+  const fmt = (v) => '₹' + v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+  document.getElementById('pTotalValue').textContent = fmt(totalVal);
+  document.getElementById('pInvested').textContent = fmt(totalCost);
+
+  const pnlEl = document.getElementById('pPnl');
+  pnlEl.textContent = (pnl >= 0 ? '+' : '') + fmt(pnl);
+  pnlEl.className = 'value ' + (pnl >= 0 ? 'up' : 'down');
+
+  const dayEl = document.getElementById('pDayChange');
+  dayEl.textContent = (dayChg >= 0 ? '+' : '') + fmt(dayChg);
+  dayEl.className = 'value ' + (dayChg >= 0 ? 'up' : 'down');
+}
+
+// ──────────────────────────────────────────────────────────
+//  AI Chat (Gemini — direct from browser)
+// ──────────────────────────────────────────────────────────
+async function sendAI() {
+  const inp = document.getElementById('aiInput');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  if (!geminiKey) {
+    document.getElementById('keyModal').classList.add('active');
+    return;
+  }
+
+  const box = document.getElementById('aiMessages');
+  box.innerHTML += `<div class="ai-msg user">${escapeHtml(msg)}</div>`;
+  inp.value = '';
+  box.scrollTop = box.scrollHeight;
+
+  // Show loader
+  const loaderId = 'loader_' + Date.now();
+  box.innerHTML += `<div class="ai-msg assistant" id="${loaderId}"><div class="loader"></div></div>`;
+  box.scrollTop = box.scrollHeight;
+
+  try {
+    // Build context from watchlist & portfolio
+    let context = 'You are InvestIQ Pro AI, a knowledgeable market analyst. Current date: ' + new Date().toLocaleDateString() + '. ';
+    if (watchlist.length) context += 'User watchlist: ' + watchlist.join(', ') + '. ';
+    if (portfolio.length) context += 'User portfolio: ' + portfolio.map(h => `${h.ticker}: ${h.qty} shares @ avg ₹${h.avgPrice}`).join(', ') + '. ';
+    context += 'Give concise, actionable insights. Use INR (₹) for Indian stocks. Mention key levels, trends, and risks.';
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: context }] },
+        contents: [{ parts: [{ text: msg }] }]
+      })
+    });
+    const data = await res.json();
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.';
+    document.getElementById(loaderId).innerHTML = formatAIResponse(reply);
+  } catch (err) {
+    document.getElementById(loaderId).innerHTML = `<span style="color:var(--red)">Error: ${err.message}</span>`;
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+function formatAIResponse(text) {
+  // Basic markdown-like formatting
+  return text
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ──────────────────────────────────────────────────────────
+//  Gemini Key
+// ──────────────────────────────────────────────────────────
+function updateKeyBadge() {
+  const dot = document.getElementById('keyDot');
+  const label = document.getElementById('keyLabel');
+  if (geminiKey) {
+    dot.className = 'dot on';
+    label.textContent = 'AI ready';
+  } else {
+    dot.className = 'dot off';
+    label.textContent = 'No AI key';
+  }
+}
+
+function saveKey() {
+  geminiKey = document.getElementById('keyInput').value.trim();
+  localStorage.setItem(STORE_KEY, geminiKey);
+  updateKeyBadge();
+  closeKeyModal();
+}
+
+function closeKeyModal() {
+  document.getElementById('keyModal').classList.remove('active');
+}
+
+// ──────────────────────────────────────────────────────────
+//  Watchlist input — Enter key
+// ──────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('watchInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addToWatchlist();
+  });
+});
+</script>
+</body>
+</html>
