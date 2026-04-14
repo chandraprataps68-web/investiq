@@ -652,17 +652,8 @@ function updateTicker(d){
 // API KEY MANAGEMENT - simple prompt approach
 // ═══════════════════════════════════════════════
 function showKeySetup(){
-  var key=prompt('Enter your Gemini API key (AIzaSy...) or Groq key (gsk_...):\n\nGet free Gemini key at: aistudio.google.com/apikey\nGet free Groq key at: console.groq.com/keys');
-  if(key&&key.trim()){
-    var k=key.trim();
-    if(k.startsWith('AIza')||k.startsWith('gsk_')){
-      setAIKey(k);
-      updateKeyIndicator();
-      alert('Key saved! You can now start trading.');
-    }else{
-      alert('Invalid key. Should start with AIzaSy (Gemini) or gsk_ (Groq). Try again.');
-    }
-  }
+  newChat();
+  setTimeout(showInlineSetup,50);
 }
 
 function updateKeyIndicator(){
@@ -675,16 +666,58 @@ function updateKeyIndicator(){
   }
 }
 
-// On load - prompt for key if not set
+// On load
 window.addEventListener('load',function(){
+  updateKeyIndicator();
   if(!getAIKey()){
-    setTimeout(function(){
-      showKeySetup();
-    },500);
-  }else{
-    updateKeyIndicator();
+    showInlineSetup();
   }
 });
+
+function showInlineSetup(){
+  var w=document.getElementById('welcome');
+  if(!w)return;
+  w.innerHTML='<div style="max-width:420px;width:100%;text-align:left">'
+    +'<div style="font-size:28px;font-weight:700;letter-spacing:-1px;margin-bottom:6px;text-align:center">Invest<em style="color:var(--accent);font-style:normal">IQ</em> Pro</div>'
+    +'<div style="font-size:12px;color:var(--tx2);margin-bottom:20px;text-align:center;line-height:1.6">Enter your free AI API key to get started.<br>Key saved in your browser — never sent anywhere.</div>'
+    +'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:10px;padding:16px;margin-bottom:10px">'
+    +'<div style="font-size:11px;color:var(--tx2);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Recommended — Google Gemini (Free, Fast)</div>'
+    +'<div style="font-size:11px;color:var(--tx2);margin-bottom:10px;line-height:1.5">1,500 requests/day · 1–3 second responses<br>'
+    +'Get free key: <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent)">aistudio.google.com/apikey</a></div>'
+    +'<input id="setup-key" type="text" placeholder="Paste your AIzaSy... or gsk_... key here" '
+    +'style="width:100%;padding:10px 12px;font-size:13px;background:var(--s3);border:1px solid var(--b2);border-radius:7px;color:var(--tx);font-family:var(--font);outline:none;margin-bottom:8px"/>'
+    +'<div id="setup-err" style="font-size:11px;color:var(--red);min-height:16px;margin-bottom:6px"></div>'
+    +'<button onclick="submitSetupKey()" '
+    +'style="width:100%;padding:10px;background:linear-gradient(135deg,var(--accent),var(--blue));color:#070b0f;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">'
+    +'Start Trading →</button>'
+    +'</div>'
+    +'<div style="font-size:10px;color:var(--tx3);text-align:center">Also works with Groq key (gsk_...) from <a href="https://console.groq.com/keys" target="_blank" style="color:var(--tx2)">console.groq.com</a></div>'
+    +'</div>';
+
+  // Allow Enter key on the input
+  setTimeout(function(){
+    var inp=document.getElementById('setup-key');
+    if(inp){
+      inp.addEventListener('keydown',function(e){if(e.key==='Enter')submitSetupKey()});
+      inp.focus();
+    }
+  },100);
+}
+
+function submitSetupKey(){
+  var inp=document.getElementById('setup-key');
+  var err=document.getElementById('setup-err');
+  if(!inp)return;
+  var key=inp.value.trim();
+  if(!key){if(err)err.textContent='Please paste your API key';return}
+  if(!key.startsWith('AIza')&&!key.startsWith('gsk_')){
+    if(err)err.textContent='Key must start with AIzaSy (Gemini) or gsk_ (Groq)';return;
+  }
+  setAIKey(key);
+  updateKeyIndicator();
+  // Restore welcome screen
+  newChat();
+}
 
 loadGlobal();
 setInterval(loadGlobal,180000);
