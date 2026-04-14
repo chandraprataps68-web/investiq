@@ -513,12 +513,19 @@ let gcache = null;
 
 async function loadGlobalDashboard() {
   try {
-    const r = await fetch('/api/global-markets');
+    const r = await fetch('/api/global-markets', {signal: AbortSignal.timeout(10000)});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
-    gcache = d;
-    renderDashboard(d);
-    updateTickerStrip(d);
-  } catch(e) { console.log('Global dashboard:', e); }
+    if(d && d.markets && d.markets.length > 0) {
+      gcache = d;
+      renderDashboard(d);
+      updateTickerStrip(d);
+    }
+  } catch(e) {
+    console.log('Global dashboard error:', e.message);
+    // If we have cached data, still render it
+    if(gcache) { renderDashboard(gcache); updateTickerStrip(gcache); }
+  }
 }
 
 function mktChgStr(v) { const n = parseFloat(v); return (n>=0?'▲':'▼') + Math.abs(n).toFixed(2) + '%'; }
@@ -750,7 +757,8 @@ async function send(){
       ...syms.slice(0,4).map(s=>fetchLiveTA(s))
     ]);
 
-    globalData = globalRes.status==='fulfilled' ? globalRes.value : null;
+    globalData = (globalRes.status==='fulfilled' && globalRes.value) ? globalRes.value : gcache;
+    if(globalData) gcache = globalData;
     taRes.forEach(r=>{if(r.status==='fulfilled'&&r.value)taResults.push(r.value)});
 
     // Build global market context for AI
@@ -802,7 +810,7 @@ Market Mood: ${(globalData.mood||[]).join(' | ')}
       const fmtMkt = m => m?`${m.name} ${m.chg>=0?'▲':'▼'}${Math.abs(m.chgPct)}%`:'';
 
       // Update right panel dashboard
-      renderDashboard(globalData); updateTickerStrip(globalData);
+      if(globalData){renderDashboard(globalData); updateTickerStrip(globalData);}
       liveBanner = `<div class="gcx-banner">
         <div class="gcx-row">
           <span style="font-size:11px;font-weight:700;color:var(--blue)">🌍 Global</span>
