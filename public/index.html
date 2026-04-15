@@ -367,8 +367,8 @@ body{font-family:var(--font);background:var(--bg-0);color:var(--text-0);line-hei
   <div style="margin-bottom:12px">
     <label style="font-size:12px;color:var(--text-2)">Model:</label>
     <select id="modelSelect" style="background:var(--bg-0);border:1px solid var(--border-0);border-radius:var(--r-sm);color:var(--text-0);padding:6px 10px;font-family:var(--mono);font-size:12px;width:100%;outline:none;margin-top:4px">
-      <option value="gemini-2.5-flash">gemini-2.5-flash (recommended)</option>
-      <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+      <option value="gemini-2.0-flash">gemini-2.0-flash (recommended)</option>
+      <option value="gemini-2.5-flash">gemini-2.5-flash (newer, may need billing)</option>
       <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
       <option value="gemini-1.5-flash">gemini-1.5-flash (older, stable)</option>
     </select>
@@ -384,7 +384,7 @@ const S = {
   watchlist: JSON.parse(localStorage.getItem('iq_wl') || '[]'),
   portfolio: JSON.parse(localStorage.getItem('iq_pf') || '[]'),
   geminiKey: localStorage.getItem('iq_gk') || '',
-  geminiModel: localStorage.getItem('iq_model') || 'gemini-2.5-flash',
+  geminiModel: localStorage.getItem('iq_model') || 'gemini-2.0-flash',
   currentSym: '^NSEI', currentRange: '1y', currentInterval: '1d',
   markets: [], tickers: [],
   chart: null, candleSeries: null, volumeSeries: null
@@ -688,7 +688,7 @@ async function callGemini(msg) {
   }
   ctx += 'Give concise, actionable insights. Use ₹ for Indian stocks. Mention RSI/MACD/EMA where relevant, support/resistance, entry/target/stop loss for trade setups. Format with **bold** headers.';
 
-  const model = S.geminiModel || 'gemini-2.5-flash';
+  const model = S.geminiModel || 'gemini-2.0-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${S.geminiKey}`;
 
   let res;
