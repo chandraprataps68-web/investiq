@@ -1,12 +1,8 @@
 {
   "name": "investiq-pro",
-  "version": "2.1.0",
-  "description": "InvestIQ Pro — Smart Trading Dashboard",
+  "version": "3.0.0",
   "main": "server.js",
   "scripts": { "start": "node server.js" },
-  "dependencies": {
-    "express": "^4.21.0",
-    "yahoo-finance2": "^3.14.0"
-  },
+  "dependencies": { "express": "^4.21.0" },
   "engines": { "node": ">=18.0.0" }
 }
