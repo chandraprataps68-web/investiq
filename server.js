@@ -1,196 +1,171 @@
 const express = require('express');
 const path = require('path');
+const { NseIndia } = require('stock-nse-india');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Allow CORS for local dev
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  next();
-});
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ═══════════════════════════════════════════════════════════
-//  YAHOO FINANCE — Lazy init with yahoo-finance2
-//  Falls back to direct fetch if package fails
+//  DATA SOURCES
+//  1. NSE India (stock-nse-india) — for Indian stocks/indices
+//  2. Yahoo Finance (yahoo-finance2) — for global markets
 // ═══════════════════════════════════════════════════════════
-let yf = null;
-let yfReady = false;
-let yfError = null;
 
+const nse = new NseIndia();
+
+// Yahoo — lazy init
+let yf = null, yfErr = null;
 async function getYF() {
-  if (yfReady) return yf;
-  if (yfError) return null; // already failed, don't retry
+  if (yf) return yf;
+  if (yfErr) return null;
   try {
     const mod = require('yahoo-finance2').default;
-    const instance = new mod({ suppressNotices: ['yahooSurvey'] });
-    // Test with a quick quote
-    await instance.quote('AAPL');
-    yf = instance;
-    yfReady = true;
-    console.log('[YF] ✅ yahoo-finance2 initialized successfully');
+    const inst = new mod({ suppressNotices: ['yahooSurvey'] });
+    await inst.quote('AAPL');
+    yf = inst;
+    console.log('[YF] ✅ Ready');
     return yf;
   } catch (e) {
-    console.log('[YF] ❌ yahoo-finance2 failed:', e.message);
-    yfError = e.message;
+    yfErr = e.message;
+    console.log('[YF] ❌', e.message);
     return null;
   }
 }
 
-// Direct fetch fallback
-async function directYahoo(url) {
-  const r = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept': '*/*',
-      'Accept-Language': 'en-US,en;q=0.9'
-    }
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
-
-async function getQuotes(symbols) {
-  // Strategy 1: yahoo-finance2
-  const yahoo = await getYF();
-  if (yahoo) {
-    const out = [];
-    for (const s of symbols) {
-      try { out.push(await yahoo.quote(s)); } catch(e) {}
-    }
-    if (out.length) return out.map(q => ({
-      symbol:q.symbol, shortName:q.shortName, longName:q.longName,
-      regularMarketPrice:q.regularMarketPrice, regularMarketChange:q.regularMarketChange,
-      regularMarketChangePercent:q.regularMarketChangePercent, regularMarketPreviousClose:q.regularMarketPreviousClose,
-      regularMarketOpen:q.regularMarketOpen, regularMarketDayHigh:q.regularMarketDayHigh,
-      regularMarketDayLow:q.regularMarketDayLow, regularMarketVolume:q.regularMarketVolume,
-      marketCap:q.marketCap, currency:q.currency, exchange:q.exchange,
-      marketState:q.marketState, fiftyTwoWeekHigh:q.fiftyTwoWeekHigh,
-      fiftyTwoWeekLow:q.fiftyTwoWeekLow, fiftyDayAverage:q.fiftyDayAverage,
-      twoHundredDayAverage:q.twoHundredDayAverage
-    }));
-  }
-
-  // Strategy 2: Direct fetch query1
+// ─── NSE: All indices with live prices ──────────────────
+app.get('/api/nse/indices', async (req, res) => {
   try {
-    const d = await directYahoo(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols.join(','))}`);
-    if (d.quoteResponse?.result?.length) return d.quoteResponse.result;
-  } catch(e) { console.log('[YF] query1 failed:', e.message); }
-
-  // Strategy 3: Direct fetch query2
-  try {
-    const d = await directYahoo(`https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols.join(','))}`);
-    if (d.quoteResponse?.result?.length) return d.quoteResponse.result;
-  } catch(e) { console.log('[YF] query2 failed:', e.message); }
-
-  return [];
-}
-
-async function getChart(symbol, range, interval) {
-  const yahoo = await getYF();
-  if (yahoo) {
-    try {
-      const now = new Date();
-      const days = {1:'1d','5d':5,'1mo':30,'6mo':180,'1y':365,'5y':1825}[range] || 180;
-      const p1 = new Date(now.getTime() - days * 86400000);
-      const r = await yahoo.chart(symbol, { period1: p1, period2: now, interval });
-      return (r.quotes||[]).filter(q=>q.open!=null).map(q=>({
-        time: Math.floor(new Date(q.date).getTime()/1000),
-        open:q.open, high:q.high, low:q.low, close:q.close, volume:q.volume
-      }));
-    } catch(e) {}
-  }
-  // Fallback
-  for (const host of ['query1','query2']) {
-    try {
-      const d = await directYahoo(`https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`);
-      const res = d.chart?.result?.[0]; if (!res) continue;
-      const ts=res.timestamp||[], ohlc=res.indicators?.quote?.[0]||{};
-      const candles = ts.map((t,i)=>({time:t,open:ohlc.open?.[i],high:ohlc.high?.[i],low:ohlc.low?.[i],close:ohlc.close?.[i],volume:ohlc.volume?.[i]})).filter(c=>c.open!=null);
-      if (candles.length) return candles;
-    } catch(e) {}
-  }
-  return [];
-}
-
-// ═══════════════════════════════════════════════════════════
-//  API ROUTES (server proxies for browser — avoids CORS)
-// ═══════════════════════════════════════════════════════════
-
-app.get('/api/quote/:symbols', async (req, res) => {
-  try {
-    const syms = req.params.symbols.split(',').map(s=>s.trim()).filter(Boolean);
-    res.json({ quotes: await getQuotes(syms) });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+    const data = await nse.getAllIndices();
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/history/:symbol', async (req, res) => {
+// ─── NSE: Specific index data (NIFTY 50, NIFTY BANK, etc) ─
+app.get('/api/nse/index/:name', async (req, res) => {
   try {
-    const candles = await getChart(req.params.symbol, req.query.range||'6mo', req.query.interval||'1d');
-    res.json({ symbol: req.params.symbol, candles });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+    const data = await nse.getEquityStockIndices(req.params.name);
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/search', async (req, res) => {
+// ─── NSE: Equity details ────────────────────────────────
+app.get('/api/nse/equity/:symbol', async (req, res) => {
   try {
-    const q = req.query.q; if (!q) return res.json({results:[]});
+    const data = await nse.getEquityDetails(req.params.symbol.toUpperCase());
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── NSE: Historical data ───────────────────────────────
+app.get('/api/nse/history/:symbol', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 365;
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 86400000);
+    const data = await nse.getEquityHistoricalData(req.params.symbol.toUpperCase(), { start, end });
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── NSE: Market status ─────────────────────────────────
+app.get('/api/nse/status', async (req, res) => {
+  try {
+    const data = await nse.getMarketStatus();
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── NSE: Pre-open market data ──────────────────────────
+app.get('/api/nse/preopen', async (req, res) => {
+  try {
+    const data = await nse.getPreOpenMarketData('NIFTY');
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Yahoo: Quote (global symbols) ──────────────────────
+app.get('/api/yf/quote/:symbols', async (req, res) => {
+  try {
     const yahoo = await getYF();
-    if (yahoo) {
-      const d = await yahoo.search(q, {quotesCount:8, newsCount:0});
-      return res.json({results:(d.quotes||[]).map(r=>({symbol:r.symbol,name:r.shortname||r.longname||r.symbol,type:r.quoteType,exchange:r.exchange}))});
+    if (!yahoo) return res.json({ quotes: [], error: 'Yahoo unavailable' });
+    const syms = req.params.symbols.split(',');
+    const quotes = [];
+    for (const s of syms) {
+      try {
+        const q = await yahoo.quote(s.trim());
+        quotes.push({
+          symbol: q.symbol, name: q.shortName || q.longName,
+          price: q.regularMarketPrice, change: q.regularMarketChange,
+          changePercent: q.regularMarketChangePercent, volume: q.regularMarketVolume,
+          marketCap: q.marketCap, dayHigh: q.regularMarketDayHigh,
+          dayLow: q.regularMarketDayLow, previousClose: q.regularMarketPreviousClose,
+          open: q.regularMarketOpen, fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
+          fiftyTwoWeekLow: q.fiftyTwoWeekLow
+        });
+      } catch (e) {}
     }
-    // fallback
-    const d = await directYahoo(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0`);
-    res.json({results:(d.quotes||[]).map(r=>({symbol:r.symbol,name:r.shortname||r.longname||r.symbol,type:r.quoteType,exchange:r.exchange}))});
-  } catch(e) { res.json({results:[]}); }
+    res.json({ quotes });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/markets', async (req,res) => {
-  try { res.json({markets: await getQuotes(['^GSPC','^DJI','^IXIC','^NSEI','^BSESN','^NSEBANK','^FTSE','^N225','^HSI'])}); }
-  catch(e) { res.status(500).json({error:e.message}); }
-});
-
-app.get('/api/ticker', async (req,res) => {
-  try { res.json({tickers: await getQuotes(['^NSEBANK','^DJI','^IXIC','^NSEI','INDIAVIX.NS','CL=F','GC=F','USDINR=X','^GSPC','BTC-USD','^VIX'])}); }
-  catch(e) { res.status(500).json({error:e.message}); }
-});
-
-app.get('/api/sectors', async (req,res) => {
+// ─── Yahoo: Chart data ──────────────────────────────────
+app.get('/api/yf/chart/:symbol', async (req, res) => {
   try {
-    const qs = await getQuotes(['^CNXIT','^CNXBANKNIFTY','^CNXPHARMA','^CNXENERGY','^CNXFMCG','^CNXAUTO','^CNXMETAL','^CNXREALTY']);
-    res.json({sectors: qs.map(q=>({...q, name:(q.shortName||q.symbol||'').replace(/NIFTY\s*/i,'')}))});
-  } catch(e) { res.status(500).json({error:e.message}); }
+    const yahoo = await getYF();
+    if (!yahoo) return res.json({ candles: [] });
+    const range = req.query.range || '6mo';
+    const interval = req.query.interval || '1d';
+    const days = { '1d': 1, '5d': 5, '1mo': 30, '6mo': 180, '1y': 365, '5y': 1825 }[range] || 180;
+    const now = new Date();
+    const r = await yahoo.chart(req.params.symbol, {
+      period1: new Date(now.getTime() - days * 86400000), period2: now, interval
+    });
+    const candles = (r.quotes || []).filter(q => q.open != null).map(q => ({
+      time: Math.floor(new Date(q.date).getTime() / 1000),
+      open: q.open, high: q.high, low: q.low, close: q.close, volume: q.volume
+    }));
+    res.json({ candles });
+  } catch (e) { res.json({ candles: [], error: e.message }); }
 });
 
-// Diagnostic endpoint — visit /api/test to see what's working
-app.get('/api/test', async (req, res) => {
-  const results = { timestamp: new Date().toISOString(), strategies: {} };
+// ─── Yahoo: Search ──────────────────────────────────────
+app.get('/api/yf/search', async (req, res) => {
+  try {
+    const yahoo = await getYF();
+    if (!yahoo) return res.json({ results: [] });
+    const d = await yahoo.search(req.query.q || '', { quotesCount: 8, newsCount: 0 });
+    res.json({ results: (d.quotes || []).map(r => ({
+      symbol: r.symbol, name: r.shortname || r.longname, exchange: r.exchange
+    })) });
+  } catch (e) { res.json({ results: [] }); }
+});
 
-  // Test yahoo-finance2
+// ─── Diagnostic ─────────────────────────────────────────
+app.get('/api/test', async (req, res) => {
+  const results = { timestamp: new Date().toISOString(), sources: {} };
+
+  // Test NSE
+  try {
+    const d = await nse.getMarketStatus();
+    results.sources.nse = { status: 'ok', data: d };
+  } catch (e) {
+    results.sources.nse = { status: 'error', error: e.message };
+  }
+
+  // Test Yahoo
   try {
     const yahoo = await getYF();
     if (yahoo) {
       const q = await yahoo.quote('AAPL');
-      results.strategies['yahoo-finance2'] = { status: 'ok', price: q.regularMarketPrice };
+      results.sources.yahoo = { status: 'ok', price: q.regularMarketPrice };
     } else {
-      results.strategies['yahoo-finance2'] = { status: 'failed', error: yfError };
+      results.sources.yahoo = { status: 'failed', error: yfErr };
     }
-  } catch(e) { results.strategies['yahoo-finance2'] = { status: 'error', error: e.message }; }
-
-  // Test direct query1
-  try {
-    const d = await directYahoo('https://query1.finance.yahoo.com/v7/finance/quote?symbols=AAPL');
-    const p = d.quoteResponse?.result?.[0]?.regularMarketPrice;
-    results.strategies['direct-query1'] = p ? { status: 'ok', price: p } : { status: 'empty' };
-  } catch(e) { results.strategies['direct-query1'] = { status: 'error', error: e.message }; }
-
-  // Test direct query2
-  try {
-    const d = await directYahoo('https://query2.finance.yahoo.com/v7/finance/quote?symbols=AAPL');
-    const p = d.quoteResponse?.result?.[0]?.regularMarketPrice;
-    results.strategies['direct-query2'] = p ? { status: 'ok', price: p } : { status: 'empty' };
-  } catch(e) { results.strategies['direct-query2'] = { status: 'error', error: e.message }; }
+  } catch (e) {
+    results.sources.yahoo = { status: 'error', error: e.message };
+  }
 
   res.json(results);
 });
@@ -199,6 +174,9 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 
 app.listen(PORT, () => {
   console.log(`InvestIQ Pro v3.0 on port ${PORT}`);
-  // Lazy init — don't block startup
-  setTimeout(() => getYF(), 2000);
+  // Warm up in background
+  setTimeout(() => {
+    nse.getMarketStatus().then(() => console.log('[NSE] ✅ Ready')).catch(e => console.log('[NSE] ❌', e.message));
+    getYF();
+  }, 2000);
 });
