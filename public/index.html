@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InvestIQ Pro v5 — Fyers Live TA</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="/ta.js"></script>
+<script src="/ml.js"></script>
+<style>
+:root{--b0:#06090f;--b1:#0b0f18;--b2:#111827;--b3:#1a2236;--bd:#1e293b;--t0:#f1f5f9;--t1:#94a3b8;--t2:#64748b;--cy:#06b6d4;--cyd:rgba(6,182,212,.1);--gn:#22c55e;--rd:#ef4444;--go:#eab308;--f:'Outfit',sans-serif;--m:'JetBrains Mono',monospace}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:var(--f);background:var(--b0);color:var(--t0);min-height:100vh;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}.up{color:var(--gn)}.dn{color:var(--rd)}
+.hdr{background:var(--b1);border-bottom:1px solid var(--bd);height:54px;display:flex;align-items:center;padding:0 20px;gap:16px;position:sticky;top:0;z-index:100}
+.logo{display:flex;align-items:center;gap:8px}.lm{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#06b6d4,#8b5cf6);display:flex;align-items:center;justify-content:center;font:800 14px var(--m);color:#fff}.lt{font:700 17px var(--f)}.lt b{color:var(--cy)}.lp{font:700 9px var(--f);color:var(--cy);background:var(--cyd);padding:2px 6px;border-radius:4px;letter-spacing:1px}
+.hdr-r{display:flex;gap:8px;margin-left:auto;align-items:center}
+.btn{padding:8px 16px;border-radius:8px;background:var(--cy);color:#fff;border:none;font:600 12px var(--f);cursor:pointer;display:inline-flex;align-items:center;gap:5px;text-decoration:none}.btn:hover{opacity:.85}
+.btn-gh{background:0;border:1px solid var(--bd);color:var(--t1)}.btn-gh:hover{background:var(--b3);color:var(--t0)}
+.btn-gn{background:var(--gn)}.btn-rd{background:var(--rd)}.btn-sm{padding:5px 10px;font-size:11px}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}.dot.on{background:var(--gn)}.dot.off{background:var(--rd)}.pulse{animation:pulse 2s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.main{max-width:1400px;margin:0 auto;padding:16px 20px}
+.card{background:var(--b1);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px}
+.card-t{font:700 10px var(--f);color:var(--t2);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}
+
+/* Auth screen */
+.auth-screen{text-align:center;padding:80px 20px}
+.auth-screen h1{font:800 36px var(--f);margin-bottom:12px}.auth-screen h1 b{color:var(--cy)}
+.auth-screen p{font-size:14px;color:var(--t1);max-width:500px;margin:0 auto 24px}
+.auth-features{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;max-width:700px;margin:30px auto 0;text-align:left}
+.auth-feat{background:var(--b2);border:1px solid var(--bd);border-radius:10px;padding:16px}
+.auth-feat .af-icon{font-size:24px;margin-bottom:8px}.auth-feat .af-title{font:600 14px var(--f);margin-bottom:4px}.auth-feat .af-desc{font-size:11px;color:var(--t1)}
+
+/* Stock grid */
+.stock-bar{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px}
+.sq{flex-shrink:0;padding:10px 16px;background:var(--b1);border:1px solid var(--bd);border-radius:10px;cursor:pointer;min-width:120px;text-align:center;transition:all .15s}
+.sq:hover{border-color:var(--cy)}.sq.act{border-color:var(--cy);background:var(--cyd)}
+.sq-sym{font:700 13px var(--m)}.sq-price{font:500 13px var(--m);margin-top:2px}.sq-chg{font:600 11px var(--m);margin-top:1px}
+
+/* Analysis layout */
+.an-grid{display:grid;grid-template-columns:1fr 280px;gap:14px}
+#cbox{width:100%;height:400px;border-radius:10px;overflow:hidden;background:var(--b2)}
+.rbar{display:flex;gap:4px;margin-bottom:8px}.rb{padding:4px 12px;border-radius:6px;font:600 11px var(--m);cursor:pointer;color:var(--t2);background:0;border:none}.rb:hover{color:var(--t0);background:var(--b3)}.rb.act{color:var(--cy);background:var(--cyd)}
+
+/* TA panel */
+.tap{display:flex;flex-direction:column;gap:6px}
+.ic{background:var(--b2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px}
+.in{font:700 9px var(--f);color:var(--t2);letter-spacing:.6px;text-transform:uppercase;margin-bottom:4px}
+.iv{font:600 16px var(--m)}.is{font-size:10px;color:var(--t1);margin-top:2px}
+.verdict{padding:14px;border-radius:10px;text-align:center;font:700 20px var(--f)}
+.verdict.buy{background:rgba(34,197,94,.08);border:2px solid var(--gn);color:var(--gn)}
+.verdict.sell{background:rgba(239,68,68,.08);border:2px solid var(--rd);color:var(--rd)}
+.verdict.hold{background:rgba(234,179,8,.08);border:2px solid var(--go);color:var(--go)}
+.conf{font:500 10px var(--f);margin-top:4px;opacity:.7}
+.sig{padding:5px 8px;border-radius:6px;font-size:10px;font-weight:600;margin-bottom:3px}
+.sig.buy{background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);color:var(--gn)}
+.sig.sell{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);color:var(--rd)}
+.sig.info{background:rgba(6,182,212,.06);border:1px solid rgba(6,182,212,.15);color:var(--cy)}
+.tsetup{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:6px}
+.tsi{background:var(--b2);border-radius:6px;padding:8px;text-align:center}
+.tsl{font:700 8px var(--f);color:var(--t2);text-transform:uppercase}.tsv{font:700 14px var(--m);margin-top:2px}
+
+/* AI */
+.aibox{background:var(--b2);border:1px solid var(--bd);border-radius:10px;padding:12px;max-height:350px;overflow-y:auto;display:flex;flex-direction:column;margin-bottom:10px}
+.am{padding:8px 12px;border-radius:8px;font-size:12px;line-height:1.6;max-width:85%;margin-bottom:4px;word-wrap:break-word}
+.am.u{background:var(--cyd);align-self:flex-end;border:1px solid rgba(6,182,212,.15)}.am.a{background:var(--b1);border:1px solid var(--bd)}.am strong{color:var(--cy)}
+.airow{display:flex;gap:6px}.airow input{flex:1;padding:9px 12px;background:var(--b1);border:1px solid var(--bd);border-radius:8px;color:var(--t0);font:13px var(--f);outline:none}.airow input:focus{border-color:var(--cy)}
+
+/* ML stats */
+.ml-bar{background:var(--b2);border:1px solid var(--bd);border-radius:8px;padding:10px;display:flex;gap:16px;align-items:center;font-size:11px;color:var(--t1);margin-bottom:14px;flex-wrap:wrap}
+.ml-stat{display:flex;flex-direction:column;align-items:center}.ml-val{font:700 16px var(--m);color:var(--t0)}.ml-label{font-size:9px;color:var(--t2);text-transform:uppercase;margin-top:1px}
+
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:none;z-index:500;align-items:center;justify-content:center}.modal.open{display:flex}
+.mbox{background:var(--b2);border:1px solid var(--bd);border-radius:12px;padding:24px;width:90%;max-width:400px}.mbox h3{margin-bottom:8px}.mbox p{font-size:12px;color:var(--t1);margin-bottom:12px}
+.mbox input,.mbox select{width:100%;padding:8px 10px;background:var(--b0);border:1px solid var(--bd);border-radius:6px;color:var(--t0);font:12px var(--m);outline:none;margin-bottom:8px}
+.loader{display:inline-block;width:14px;height:14px;border:2px solid var(--bd);border-top-color:var(--cy);border-radius:50%;animation:sp .6s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.disc{text-align:center;font-size:10px;color:var(--t2);padding:12px;border-top:1px solid var(--bd)}
+@media(max-width:900px){.an-grid{grid-template-columns:1fr}#cbox{height:280px}}
+</style>
+</head>
+<body>
+<header class="hdr">
+  <div class="logo"><div class="lm">IQ</div><span class="lt">Invest<b>IQ</b></span><span class="lp">v5</span></div>
+  <div class="hdr-r">
+    <span id="authStatus"></span>
+    <a class="btn btn-gh btn-sm" id="authBtn" href="/auth/login">Login with Fyers</a>
+    <div style="cursor:pointer;display:flex;align-items:center;gap:4px;font-size:11px;color:var(--t2)" id="kB"><span class="dot off" id="kD"></span><span id="kL">No AI</span></div>
+  </div>
+</header>
+
+<!-- Auth required screen -->
+<div id="authScreen" class="auth-screen" style="display:none">
+  <h1>Invest<b>IQ</b> Pro</h1>
+  <p>Real-time NSE/BSE data · Computed TA indicators · Self-learning signals · AI analysis with live data</p>
+  <a href="/auth/login" class="btn" style="font-size:16px;padding:14px 32px">🔐 Login with Fyers to Start</a>
+  <div class="auth-features">
+    <div class="auth-feat"><div class="af-icon">📊</div><div class="af-title">Live Data</div><div class="af-desc">Real-time NSE/BSE prices via Fyers WebSocket</div></div>
+    <div class="auth-feat"><div class="af-icon">🧮</div><div class="af-title">Real TA</div><div class="af-desc">RSI, MACD, EMA, Bollinger — computed from live data</div></div>
+    <div class="auth-feat"><div class="af-icon">🧠</div><div class="af-title">Self-Learning</div><div class="af-desc">Tracks predictions, learns which signals work best</div></div>
+    <div class="auth-feat"><div class="af-icon">🤖</div><div class="af-title">AI Analysis</div><div class="af-desc">Gemini 2.5-flash with real computed indicators</div></div>
+  </div>
+</div>
+
+<!-- Main app (shown after auth) -->
+<div id="appMain" class="main" style="display:none">
+  <!-- ML Stats -->
+  <div class="ml-bar" id="mlBar">
+    <div style="font-weight:600;color:var(--cy)">🧠 ML Model</div>
+    <div class="ml-stat"><div class="ml-val" id="mlPred">0</div><div class="ml-label">Predictions</div></div>
+    <div class="ml-stat"><div class="ml-val" id="mlWin">0%</div><div class="ml-label">Win Rate</div></div>
+    <div class="ml-stat"><div class="ml-val" id="mlW">0</div><div class="ml-label">Wins</div></div>
+    <div class="ml-stat"><div class="ml-val" id="mlL">0</div><div class="ml-label">Losses</div></div>
+    <div class="ml-stat"><div class="ml-val" id="mlPen">0</div><div class="ml-label">Pending</div></div>
+  </div>
+
+  <!-- Stock quick bar -->
+  <div class="stock-bar" id="sBar"></div>
+
+  <!-- Analysis Grid -->
+  <div class="an-grid">
+    <div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div><span style="font:700 20px var(--m)" id="cSym">—</span><span style="font:400 12px var(--f);color:var(--t1);margin-left:8px" id="cName"></span></div>
+          <div><span style="font:700 20px var(--m)" id="cPrice">—</span><span style="font:600 12px var(--m);margin-left:6px" id="cChg">—</span></div>
+        </div>
+        <div class="rbar"><button class="rb" data-r="5" data-i="15">5D/15m</button><button class="rb" data-r="30" data-i="D">1M</button><button class="rb" data-r="180" data-i="D">6M</button><button class="rb act" data-r="365" data-i="D">1Y</button></div>
+        <div id="cbox"></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:4px;margin-top:8px" id="sMeta"></div>
+      </div>
+      <div class="card">
+        <div class="card-t">🤖 AI Analysis (Gemini 2.5-flash + Real TA)</div>
+        <div class="aibox" id="aiBox"><div class="am a">Analyse a stock above, then click <b>"🧠 AI Deep"</b> for analysis with real computed indicators.</div></div>
+        <div class="airow"><input id="aiIn" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendAI()"><button class="btn btn-sm" onclick="sendAI()">Send</button><button class="btn btn-sm btn-gh" onclick="aiDeep()">🧠 AI Deep</button></div>
+      </div>
+    </div>
+    <div class="tap">
+      <div id="vBox" class="verdict hold">Select a stock</div>
+      <div class="ic"><div class="in">RSI (14)</div><div class="iv" id="taRSI">—</div><div class="is" id="taRSIs"></div></div>
+      <div class="ic"><div class="in">MACD (12,26,9)</div><div class="iv" id="taMACD">—</div><div class="is" id="taMs"></div></div>
+      <div class="ic"><div class="in">EMA 20/50/200</div><div class="iv" id="taEMA" style="font-size:12px">—</div><div class="is" id="taEs"></div></div>
+      <div class="ic"><div class="in">Bollinger (20,2)</div><div class="iv" id="taBB" style="font-size:12px">—</div><div class="is" id="taBs"></div></div>
+      <div class="ic"><div class="in">Volume</div><div class="iv" id="taVol">—</div><div class="is" id="taVs"></div></div>
+      <div class="ic"><div class="in">Support / Resistance</div><div class="iv" id="taSR" style="font-size:11px">—</div></div>
+      <div class="card-t" style="margin-top:4px">Signals</div>
+      <div id="sigList"></div>
+      <div class="card-t" style="margin-top:4px">Trade Setup</div>
+      <div class="tsetup"><div class="tsi"><div class="tsl">Entry</div><div class="tsv" id="tsE">—</div></div><div class="tsi"><div class="tsl">Target</div><div class="tsv up" id="tsT">—</div></div><div class="tsi"><div class="tsl">Stop Loss</div><div class="tsv dn" id="tsS">—</div></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="disc">InvestIQ Pro v5 · Fyers Live Data · Real TA · Self-Learning ML · <a href="/api/health" target="_blank" style="color:var(--cy)">Diagnostics</a></div>
+
+<!-- Gemini Key Modal -->
+<div class="modal" id="kM"><div class="mbox"><h3>Gemini API Key</h3><p><a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--cy)">Get free key</a></p><input id="kI" placeholder="AIza…" type="password"><select id="mS"><option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option></select><div id="kTR" style="font-size:11px;min-height:16px;margin-bottom:6px"></div><div style="display:flex;gap:6px;justify-content:flex-end"><button class="btn btn-gh btn-sm" onclick="document.getElementById('kM').classList.remove('open')">Cancel</button><button class="btn btn-gh btn-sm" onclick="testKey()">Test</button><button class="btn btn-sm" onclick="saveKey()">Save</button></div></div></div>
+
+<script>
+const STOCKS=['NSE:RELIANCE-EQ','NSE:TCS-EQ','NSE:HDFCBANK-EQ','NSE:INFY-EQ','NSE:ICICIBANK-EQ','NSE:SBIN-EQ','NSE:BHARTIARTL-EQ','NSE:ITC-EQ','NSE:LT-EQ','NSE:BAJFINANCE-EQ'];
+const NAMES={RELIANCE:'Reliance',TCS:'TCS',HDFCBANK:'HDFC Bank',INFY:'Infosys',ICICIBANK:'ICICI Bank',SBIN:'SBI',BHARTIARTL:'Airtel',ITC:'ITC',LT:'L&T',BAJFINANCE:'Bajaj Fin'};
+let GK=localStorage.getItem('iq_k')||'',GM=localStorage.getItem('iq_m')||'gemini-2.5-flash';
+let curSym='NSE:RELIANCE-EQ',curRes='D',curDays=365,chart=null,cSer=null,vSer=null,lastTA=null,lastQuote=null;
+const fN=n=>n!=null?n.toLocaleString('en-IN',{maximumFractionDigits:2}):'—';
+const fV=v=>{if(!v)return'—';if(v>=1e7)return(v/1e7).toFixed(2)+' Cr';if(v>=1e5)return(v/1e5).toFixed(2)+' L';if(v>=1e3)return(v/1e3).toFixed(0)+'K';return v+'';};
+const symShort=s=>s.replace('NSE:','').replace('-EQ','');
+
+// ─── Init ───
+document.addEventListener('DOMContentLoaded', async()=>{
+  if(GM.includes('2.0')){GM='gemini-2.5-flash';localStorage.setItem('iq_m',GM);}
+  updKUI();
+  // Check auth
+  const auth=await(await fetch('/api/auth/status')).json();
+  if(auth.authenticated){
+    document.getElementById('authScreen').style.display='none';
+    document.getElementById('appMain').style.display='block';
+    document.getElementById('authBtn').textContent='✓ Connected';
+    document.getElementById('authBtn').className='btn btn-gn btn-sm';
+    document.getElementById('authBtn').href='#';
+    document.getElementById('authStatus').innerHTML='<span class="dot on pulse"></span>';
+    initChart();buildStockBar();loadStock(curSym);updateMLStats();
+    setInterval(()=>{loadQuotes();},15000); // refresh every 15s
+  } else {
+    document.getElementById('authScreen').style.display='block';
+    document.getElementById('appMain').style.display='none';
+  }
+  // Check URL params for auth result
+  const p=new URLSearchParams(location.search);
+  if(p.get('auth')==='success') history.replaceState(null,'','/');
+  if(p.get('auth')==='error') alert('Fyers login failed: '+(p.get('msg')||'Unknown error'));
+
+  document.querySelectorAll('.rb').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.rb').forEach(x=>x.classList.remove('act'));b.classList.add('act');curDays=parseInt(b.dataset.r);curRes=b.dataset.i;loadHistory(curSym,curRes,curDays);}));
+  document.getElementById('kB').addEventListener('click',()=>{document.getElementById('kM').classList.add('open');document.getElementById('kI').value=GK;document.getElementById('mS').value=GM;});
+});
+
+// ─── Stock Bar ───
+function buildStockBar(){
+  document.getElementById('sBar').innerHTML=STOCKS.map(s=>{const sh=symShort(s);return`<div class="sq${s===curSym?' act':''}" onclick="loadStock('${s}')" id="sq_${sh}"><div class="sq-sym">${NAMES[sh]||sh}</div><div class="sq-price" id="sp_${sh}">—</div><div class="sq-chg" id="sc_${sh}">—</div></div>`;}).join('');
+  loadQuotes();
+}
+async function loadQuotes(){
+  try{const d=await(await fetch('/api/quotes?symbols='+STOCKS.join(','))).json();
+  if(d.d){d.d.forEach(q=>{const sh=symShort(q.n);const el=document.getElementById('sp_'+sh),ce=document.getElementById('sc_'+sh);if(el)el.textContent='₹'+fN(q.v?.lp);if(ce){const ch=q.v?.ch||0;const pct=q.v?.chp||0;const u=ch>=0;ce.textContent=`${u?'+':''}${pct.toFixed(2)}%`;ce.className='sq-chg '+(u?'up':'dn');}
+  // Update ML outcomes
+  if(q.v?.lp)ML.updateOutcomes(q.n,q.v.lp);});}
+  updateMLStats();}catch(e){console.warn('Quotes:',e);}
+}
+
+// ─── Load Stock ───
+async function loadStock(sym){
+  curSym=sym;const sh=symShort(sym);
+  document.querySelectorAll('.sq').forEach(s=>s.classList.remove('act'));
+  document.getElementById('sq_'+sh)?.classList.add('act');
+  document.getElementById('cSym').textContent=sh;document.getElementById('cName').textContent=NAMES[sh]||'';
+  // Load quote
+  try{const d=await(await fetch('/api/quotes?symbols='+sym)).json();
+  if(d.d?.[0]){const q=d.d[0].v;lastQuote={symbol:sym,name:NAMES[sh],ltp:q.lp,change:q.ch,changePct:q.chp,open:q.open_price,high:q.high_price,low:q.low_price,prevClose:q.prev_close_price,volume:q.vol_traded_today};
+  document.getElementById('cPrice').textContent='₹'+fN(q.lp);
+  const u=(q.ch||0)>=0;document.getElementById('cChg').textContent=`${u?'+':''}${fN(q.ch)} (${(q.chp||0).toFixed(2)}%)`;document.getElementById('cChg').className=u?'up':'dn';
+  document.getElementById('sMeta').innerHTML=[['Open',fN(q.open_price)],['High',fN(q.high_price)],['Low',fN(q.low_price)],['Prev',fN(q.prev_close_price)],['Volume',fV(q.vol_traded_today)]].map(([l,v])=>`<div style="background:var(--b2);border-radius:6px;padding:5px 8px"><div style="font:700 8px var(--f);color:var(--t2);text-transform:uppercase">${l}</div><div style="font:500 12px var(--m);margin-top:1px">${v}</div></div>`).join('');
+  }}catch(e){document.getElementById('cName').textContent='Error: '+e.message;}
+  loadHistory(sym,curRes,curDays);
+}
+
+// ─── Chart + TA ───
+function initChart(){const b=document.getElementById('cbox');if(!b||chart)return;chart=LightweightCharts.createChart(b,{width:b.clientWidth,height:b.clientHeight,layout:{background:{type:'solid',color:'#111827'},textColor:'#94a3b8',fontFamily:"'Outfit'"},grid:{vertLines:{color:'rgba(30,41,59,.4)'},horzLines:{color:'rgba(30,41,59,.4)'}},crosshair:{mode:LightweightCharts.CrosshairMode.Normal},rightPriceScale:{borderColor:'#1e293b'},timeScale:{borderColor:'#1e293b',timeVisible:true}});cSer=chart.addCandlestickSeries({upColor:'#22c55e',downColor:'#ef4444',borderUpColor:'#22c55e',borderDownColor:'#ef4444',wickUpColor:'#22c55e',wickDownColor:'#ef4444'});vSer=chart.addHistogramSeries({color:'#06b6d4',priceFormat:{type:'volume'},priceScaleId:'',scaleMargins:{top:.85,bottom:0}});new ResizeObserver(()=>{if(chart)chart.applyOptions({width:b.clientWidth,height:b.clientHeight});}).observe(b);}
+
+async function loadHistory(sym,res,days){
+  try{const now=Math.floor(Date.now()/1000);const from=now-days*86400;
+  const d=await(await fetch(`/api/history?symbol=${encodeURIComponent(sym)}&resolution=${res}&from=${from}&to=${now}`)).json();
+  const c=d.candles||[];if(!c.length){document.getElementById('vBox').textContent='No data';return;}
+  cSer.setData(c.map(x=>({time:x.time,open:x.open,high:x.high,low:x.low,close:x.close})));
+  vSer.setData(c.map(x=>({time:x.time,value:x.volume,color:x.close>=x.open?'rgba(34,197,94,.15)':'rgba(239,68,68,.15)'})));
+  chart.timeScale().fitContent();
+  runTA(c);}catch(e){console.warn('History:',e);}
+}
+
+function runTA(candles){
+  let a=TA.analyze(candles);if(!a){document.getElementById('vBox').textContent='Insufficient data';return;}
+  // Apply ML weights
+  a=ML.applyWeights(a);
+  lastTA=a;const i=a.indicators;
+  // Record prediction for ML tracking
+  ML.recordSignal(curSym,a.price,a.verdict,a.confidence,i,a.signals);
+  // Display
+  const r=document.getElementById('taRSI');r.textContent=i.rsi?.toFixed(1)||'—';r.className='iv '+(i.rsi<30?'up':i.rsi>70?'dn':'');
+  document.getElementById('taRSIs').textContent=i.rsi<30?'Oversold — Bullish':i.rsi>70?'Overbought — Bearish':i.rsi>50?'Bullish zone':'Bearish zone';
+  document.getElementById('taMACD').textContent=i.macd.value?.toFixed(2)||'—';
+  document.getElementById('taMs').textContent=`Sig:${i.macd.signal?.toFixed(2)||'—'} Hist:${i.macd.histogram?.toFixed(2)||'—'} ${i.macd.histogram>0?'▲':'▼'}`;
+  document.getElementById('taEMA').textContent=`${fN(i.ema.ema20)} / ${fN(i.ema.ema50)} / ${fN(i.ema.ema200)}`;
+  document.getElementById('taEs').textContent=`Price ${a.price>(i.ema.ema200||0)?'above':'below'} 200 EMA`;
+  document.getElementById('taBB').textContent=`${fN(i.bollinger.upper)} / ${fN(i.bollinger.lower)}`;
+  document.getElementById('taBs').textContent=`Mid:${fN(i.bollinger.middle)}`;
+  document.getElementById('taVol').textContent=fV(i.volume.current);
+  document.getElementById('taVs').textContent=`Avg:${fV(i.volume.average)} ${i.volume.ratio?.toFixed(1)}x ${i.volume.signal}`;
+  document.getElementById('taSR').innerHTML=`<span class="up">S:${i.supportResistance.support.map(v=>'₹'+fN(v)).join(', ')||'—'}</span><br><span class="dn">R:${i.supportResistance.resistance.map(v=>'₹'+fN(v)).join(', ')||'—'}</span>`;
+  const vb=document.getElementById('vBox');vb.className='verdict '+(a.verdict.includes('BUY')?'buy':a.verdict.includes('SELL')?'sell':'hold');
+  vb.innerHTML=`${a.verdict}<div class="conf">${a.confidence}% · Bull ${a.scores.bull} / Bear ${a.scores.bear}${a.mlApplied?' · ML weighted':''}</div>`;
+  document.getElementById('sigList').innerHTML=a.signals.map(s=>`<div class="sig ${s.type.toLowerCase()}">${s.type}·${s.indicator} — ${s.reason}</div>`).join('');
+  if(a.tradeSetup){document.getElementById('tsE').textContent='₹'+fN(a.tradeSetup.entry);document.getElementById('tsT').textContent='₹'+fN(a.tradeSetup.target);document.getElementById('tsS').textContent='₹'+fN(a.tradeSetup.stopLoss);}
+  updateMLStats();
+}
+
+function updateMLStats(){const s=ML.getStats();document.getElementById('mlPred').textContent=s.totalPredictions;document.getElementById('mlWin').textContent=s.winRate+'%';document.getElementById('mlW').textContent=s.wins;document.getElementById('mlL').textContent=s.losses;document.getElementById('mlPen').textContent=s.pending;}
+
+// ─── AI ───
+async function sendAI(){const inp=document.getElementById('aiIn'),m=inp.value.trim();if(!m)return;if(!GK){document.getElementById('kM').classList.add('open');return;}const bx=document.getElementById('aiBox');bx.innerHTML+=`<div class="am u">${esc(m)}</div>`;inp.value='';const lid='l'+Date.now();bx.innerHTML+=`<div class="am a" id="${lid}"><div class="loader"></div></div>`;bx.scrollTop=1e5;try{const t=await callGemini(m);document.getElementById(lid).innerHTML=fmtAI(t);}catch(e){document.getElementById(lid).innerHTML=`<span style="color:var(--rd)">❌ ${e.message}</span>`;}bx.scrollTop=1e5;}
+function aiDeep(){if(!lastTA||!lastQuote)return;const a=lastTA,i=a.indicators,q=lastQuote,ms=ML.getStats();
+const p=`Analyse ${symShort(curSym)} with LIVE Fyers data:
+Price:₹${fN(a.price)} Chg:${q.changePct?.toFixed(2)}% Open:₹${fN(q.open)} H:₹${fN(q.high)} L:₹${fN(q.low)} Vol:${fV(q.volume)}
+
+COMPUTED TA (real math):
+RSI(14):${i.rsi?.toFixed(1)} ${i.rsi<30?'OVERSOLD':i.rsi>70?'OVERBOUGHT':''}
+MACD:${i.macd.value?.toFixed(2)} Signal:${i.macd.signal?.toFixed(2)} Hist:${i.macd.histogram?.toFixed(2)}
+EMA20:₹${fN(i.ema.ema20)} EMA50:₹${fN(i.ema.ema50)} EMA200:₹${fN(i.ema.ema200)}
+BB:₹${fN(i.bollinger.upper)}—₹${fN(i.bollinger.lower)}
+Support:${i.supportResistance.support.map(v=>'₹'+fN(v)).join(',')||'none'}
+Resistance:${i.supportResistance.resistance.map(v=>'₹'+fN(v)).join(',')||'none'}
+Volume:${fV(i.volume.current)} (${i.volume.ratio?.toFixed(1)}x avg)
+
+Algorithm:${a.verdict} (${a.confidence}%) ML applied:${a.mlApplied} Weights:${JSON.stringify(a.mlWeights||{})}
+ML Model: ${ms.totalPredictions} predictions, ${ms.winRate}% win rate (${ms.wins}W/${ms.losses}L)
+${a.tradeSetup?`Setup: Entry₹${fN(a.tradeSetup.entry)} Target₹${fN(a.tradeSetup.target)} SL₹${fN(a.tradeSetup.stopLoss)}`:''}
+
+Analyse professionally. Reference numbers. Confirm or challenge verdict. Refine trade setup. Consider sector trends.`;
+document.getElementById('aiIn').value=p;sendAI();}
+
+async function callGemini(msg){const ctx='You are InvestIQ Pro AI. You receive REAL computed indicators from Fyers live data. Reference specific numbers. Use ₹. Be concise, actionable. **Bold** key points.';
+const url=`https://generativelanguage.googleapis.com/v1beta/models/${GM}:generateContent?key=${GK}`;
+const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system_instruction:{parts:[{text:ctx}]},contents:[{parts:[{text:msg}]}]})});
+const data=await res.json();if(data.error){if(res.status===429)throw new Error('Rate limited—wait 60s');throw new Error(data.error.message);}
+return data.candidates?.[0]?.content?.parts?.[0]?.text||'Empty response';}
+function fmtAI(t){return t.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\*(.*?)\*/g,'<em>$1</em>').replace(/\n/g,'<br>');}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+// ─── Key ───
+function updKUI(){const d=document.getElementById('kD'),l=document.getElementById('kL');if(GK){d.className='dot on';l.textContent='AI ready';}else{d.className='dot off';l.textContent='No AI';}}
+function saveKey(){GK=document.getElementById('kI').value.trim();GM=document.getElementById('mS').value;localStorage.setItem('iq_k',GK);localStorage.setItem('iq_m',GM);updKUI();document.getElementById('kM').classList.remove('open');}
+async function testKey(){const key=document.getElementById('kI').value.trim(),model=document.getElementById('mS').value,el=document.getElementById('kTR');if(!key){el.innerHTML='<span style="color:var(--rd)">Enter key</span>';return;}el.innerHTML='<div class="loader"></div>';try{const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Say OK'}]}]})});const d=await r.json();el.innerHTML=d.error?`<span style="color:var(--rd)">❌ ${d.error.message}</span>`:d.candidates?.[0]?`<span style="color:var(--gn)">✅ Works!</span>`:'⚠️';}catch(e){el.innerHTML=`<span style="color:var(--rd)">❌ ${e.message}</span>`;}}
+</script>
+</body>
+</html>
