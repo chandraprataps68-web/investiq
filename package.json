@@ -1,0 +1,11 @@
+{
+  "name": "investiq-pro",
+  "version": "5.0.0",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "express": "^4.21.0",
+    "fyers-api-v3": "^1.0.9"
+  },
+  "engines": { "node": ">=18.0.0" }
+}
