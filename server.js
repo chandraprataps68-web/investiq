@@ -123,13 +123,13 @@ app.get('/api/history', requireAuth, async (req, res) => {
     if (!symbol) return res.status(400).json({ error: 'symbol required' });
     const fyers = getFyers();
     const now = Math.floor(Date.now() / 1000);
-    const data = await fyers.getCandles({
+    const data = await fyers.getHistory({
       symbol: symbol,
       resolution: resolution || 'D', // D=daily, 1=1min, 5=5min, 15, 30, 60, 120, 240
       date_format: 0,
       range_from: from || String(now - 365 * 86400),
       range_to: to || String(now),
-      cont_flag: 1
+      cont_flag: '1'
     });
     // data.candles = [[timestamp, open, high, low, close, volume], ...]
     const candles = (data.candles || []).map(c => ({
@@ -143,7 +143,7 @@ app.get('/api/history', requireAuth, async (req, res) => {
 app.get('/api/market-status', requireAuth, async (req, res) => {
   try {
     const fyers = getFyers();
-    const data = await fyers.getMarketStatus();
+    const data = await fyers.market_status();
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -161,7 +161,7 @@ app.get('/api/profile', requireAuth, async (req, res) => {
 app.get('/api/holdings', requireAuth, async (req, res) => {
   try {
     const fyers = getFyers();
-    const data = await fyers.getHoldings();
+    const data = await fyers.get_holdings();
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -170,7 +170,7 @@ app.get('/api/holdings', requireAuth, async (req, res) => {
 app.get('/api/positions', requireAuth, async (req, res) => {
   try {
     const fyers = getFyers();
-    const data = await fyers.getPositions();
+    const data = await fyers.get_positions();
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -179,7 +179,7 @@ app.get('/api/positions', requireAuth, async (req, res) => {
 app.get('/api/funds', requireAuth, async (req, res) => {
   try {
     const fyers = getFyers();
-    const data = await fyers.getFunds();
+    const data = await fyers.get_funds();
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
