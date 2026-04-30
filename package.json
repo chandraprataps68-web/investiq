@@ -1,11 +1,17 @@
 {
   "name": "investiq-pro",
-  "version": "5.0.0",
+  "version": "6.0.0",
+  "description": "InvestIQ Pro — Indian markets dashboard with scanner, pre-market bias, commodities",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "dependencies": {
-    "express": "^4.21.0",
-    "fyers-api-v3": "^1.0.9"
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
-  "engines": { "node": ">=18.0.0" }
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "fyers-api-v3": "^3.1.7"
+  }
 }

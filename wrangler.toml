@@ -1,0 +1,13 @@
+name = "investiq-keepalive"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Ping Render every 10 minutes during likely market hours (UTC)
+# IST market hours = 9:15 to 15:30 IST = 03:45 UTC to 10:00 UTC
+# Pre-market warm = 07:00 to 10:00 IST = 01:30 UTC to 04:30 UTC
+# We use a single */10 schedule and gate by IST inside the worker.
+[triggers]
+crons = ["*/10 1-11 * * 1-5"]   # every 10 min, Mon-Fri, 01:00-11:59 UTC
+
+[vars]
+RENDER_URL = "https://investiq-ir5k.onrender.com"
