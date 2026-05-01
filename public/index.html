@@ -404,9 +404,9 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
     <h2 class="panel-title">Market Scanner</h2>
     <span class="panel-sub">Trend template + RS rank + 52WH proximity across Nifty 100</span>
     <div class="panel-actions">
-      <button class="btn" onclick="loadScanner('nifty50')">Nifty 50</button>
-      <button class="btn" onclick="loadScanner('next50')">Next 50</button>
-      <button class="btn btn-primary" onclick="loadScanner('nifty100')">↻ Nifty 100</button>
+      <button class="btn" onclick="loadScanner('nifty50', true)">Nifty 50</button>
+      <button class="btn" onclick="loadScanner('next50', true)">Next 50</button>
+      <button class="btn btn-primary" onclick="loadScanner('nifty100', true)">↻ Nifty 100</button>
     </div>
   </div>
   <div id="scanner-summary" style="margin-bottom:16px"></div>
@@ -597,13 +597,14 @@ async function loadPreMarket(force) {
 // ============ Scanner ============
 let __scanSort = { col: 'confidence', dir: 'desc' };
 
-async function loadScanner(universe) {
+async function loadScanner(universe, force) {
   window.__scanLoaded = true;
   const div = document.getElementById('scanner-results');
   div.innerHTML = '<div class="loading"><span class="spinner"></span>Scanning ' + universe.toUpperCase() + ' — this takes 20–60 seconds...</div>';
   document.getElementById('scanner-summary').innerHTML = '';
   try {
-    const data = await fetch('/api/scanner?universe=' + universe).then(r => r.json());
+    const url = '/api/scanner?universe=' + universe + (force ? '&fresh=1' : '');
+    const data = await fetch(url).then(r => r.json());
     if (data.error) {
       div.innerHTML = '<div class="empty">Error: ' + data.error + (data.loginUrl ? ' <a href="'+data.loginUrl+'">Login</a>' : '') + '</div>';
       return;
