@@ -346,7 +346,7 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
     <span class="pulse-dot" id="market-dot"></span>
     <span class="mono" id="market-status">CHECKING...</span>
     <span class="mono" id="auth-status" style="color:var(--ink-3)">—</span>
-    <a class="auth-btn" id="login-btn" href="/login" style="display:none">Connect Fyers</a>
+    <a class="auth-btn" id="login-btn" href="/auth/login" style="display:none">Connect Fyers</a>
   </div>
 </header>
 
@@ -486,7 +486,7 @@ document.querySelectorAll('.tab').forEach(t => {
 // ============ Auth status ============
 async function checkAuth() {
   try {
-    const r = await fetch('/api/auth-status').then(r => r.json());
+    const r = await fetch('/api/auth/status').then(r => r.json());
     const el = document.getElementById('auth-status');
     const btn = document.getElementById('login-btn');
     if (r.authenticated) {
