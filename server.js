@@ -11,7 +11,7 @@ const TA = require('./ta');
 const { runScanner } = require('./scanner');
 const { getPreMarketSnapshot } = require('./premarket');
 const { fetchCrypto, fetchCryptoHistory, fetchCommodities } = require('./commodities');
-const { NIFTY_50, NIFTY_NEXT_50, NIFTY_100, toFyersEquity } = require('./universe');
+const { NIFTY_50, NIFTY_NEXT_50, NIFTY_100, EXTENDED_UNIVERSE, toFyersEquity } = require('./universe');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -162,8 +162,18 @@ async function getHistoryShortKey(fyersSym, resolution = 'D', days = 365) {
     range_to: String(to),
     cont_flag: '1',
   });
+  // Fyers returns { s: 'ok', candles: [...] } on success
+  // and { s: 'error', message: '...', code: -... } on failure.
+  // Don't silently swallow errors — they cause the scanner to return 0 results.
+  if (r?.s !== 'ok') {
+    const msg = r?.message || r?.s || 'unknown';
+    console.error(`[fyers history ${fyersSym}] ${msg}`);
+    // Cache empty result briefly so we don't hammer Fyers retrying bad symbols
+    cacheSet(ck, [], 5 * 60 * 1000);
+    return [];
+  }
   // Internal canonical: short keys (t,o,h,l,c,v) — used by ta.js & scanner.js
-  const candles = (r?.candles || []).map((c) => ({
+  const candles = (r.candles || []).map((c) => ({
     t: c[0], o: c[1], h: c[2], l: c[3], c: c[4], v: c[5],
   }));
   cacheSet(ck, candles, isMarketHours() ? 10 * 60 * 1000 : 60 * 60 * 1000);
@@ -283,7 +293,13 @@ app.get('/api/analyze/:symbol', requireAuth, async (req, res) => {
     if (!sym.includes(':')) sym = toFyersEquity(sym);
     const candles = await getHistoryShortKey(sym, 'D', 400);
     if (!candles || candles.length < 30) {
-      return res.json({ ok: false, reason: 'insufficient data', symbol: sym });
+      return res.json({
+        ok: false,
+        symbol: sym,
+        reason: candles?.length === 0
+          ? `No data from Fyers for ${sym}. Symbol may be delisted, suspended, or use a different series (try -BE or -SM).`
+          : `Only ${candles?.length || 0} candles available — need 30+ for analysis.`,
+      });
     }
     const a = TA.fullAnalysis(candles);
     const sig = TA.generateSignal(a);
@@ -292,24 +308,32 @@ app.get('/api/analyze/:symbol', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Universe search (autocomplete)
+// Universe search (autocomplete) — uses extended ~200 symbol list
 app.get('/api/universe', (req, res) => {
   const q = (req.query.q || '').toUpperCase();
-  const all = NIFTY_100.map((s) => ({ symbol: s, fyers: toFyersEquity(s) }));
+  const all = EXTENDED_UNIVERSE.map((s) => ({ symbol: s, fyers: toFyersEquity(s) }));
   if (!q) return res.json(all.slice(0, 50));
-  res.json(all.filter((x) => x.symbol.includes(q)).slice(0, 20));
+  // Match anywhere in the symbol; prefix matches first
+  const starts = all.filter((x) => x.symbol.startsWith(q));
+  const contains = all.filter((x) => !x.symbol.startsWith(q) && x.symbol.includes(q));
+  res.json([...starts, ...contains].slice(0, 20));
 });
 
-// Market scanner
+// Market scanner — supports ?fresh=1 to bypass cache
 app.get('/api/scanner', requireAuth, async (req, res) => {
   try {
     const universe = req.query.universe;
+    const fresh = req.query.fresh === '1';
     const list = universe === 'nifty50' ? NIFTY_50
       : universe === 'next50' ? NIFTY_NEXT_50
       : NIFTY_100;
     const ck = `scan:${universe || 'nifty100'}`;
-    const cached = cacheGet(ck);
-    if (cached) return res.json({ ...cached, fromCache: true });
+    if (!fresh) {
+      const cached = cacheGet(ck);
+      if (cached) return res.json({ ...cached, fromCache: true });
+    } else {
+      cache.delete(ck);
+    }
     const result = await runScanner(
       (sym) => getHistoryShortKey(sym, 'D', 400),
       { universe: list, concurrency: 4 }
