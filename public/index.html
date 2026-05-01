@@ -604,9 +604,20 @@ async function loadScanner(universe, force) {
   document.getElementById('scanner-summary').innerHTML = '';
   try {
     const url = '/api/scanner?universe=' + universe + (force ? '&fresh=1' : '');
-    const data = await fetch(url).then(r => r.json());
+    const res = await fetch(url);
+    const data = await res.json();
+    if (res.status === 401 || data.error === 'auth_required') {
+      div.innerHTML = `
+        <div class="empty" style="padding:60px 40px">
+          <div style="font-size:24px;color:var(--ink);font-family:'Fraunces',serif;margin-bottom:12px">Fyers session expired</div>
+          <div style="margin-bottom:24px">${data.message || 'Reconnect to continue.'}</div>
+          <a class="auth-btn" href="/auth/login" style="display:inline-block;text-decoration:none">Reconnect Fyers</a>
+        </div>`;
+      checkAuth();
+      return;
+    }
     if (data.error) {
-      div.innerHTML = '<div class="empty">Error: ' + data.error + (data.loginUrl ? ' <a href="'+data.loginUrl+'">Login</a>' : '') + '</div>';
+      div.innerHTML = '<div class="empty">Error: ' + (data.message || data.error) + '</div>';
       return;
     }
     renderScanner(data);
@@ -744,13 +755,24 @@ async function loadStock(sym) {
   const det = document.getElementById('stock-detail');
   det.innerHTML = '<div class="loading"><span class="spinner"></span>Analyzing ' + sym + '...</div>';
   try {
-    const data = await fetch('/api/analyze/' + encodeURIComponent(sym)).then(r => r.json());
+    const res = await fetch('/api/analyze/' + encodeURIComponent(sym));
+    const data = await res.json();
+    if (res.status === 401 || data.error === 'auth_required') {
+      det.innerHTML = `
+        <div class="empty" style="padding:60px 40px">
+          <div style="font-size:24px;color:var(--ink);font-family:'Fraunces',serif;margin-bottom:12px">Fyers session expired</div>
+          <div style="margin-bottom:24px">${data.message || 'Reconnect to continue.'}</div>
+          <a class="auth-btn" href="/auth/login" style="display:inline-block;text-decoration:none">Reconnect Fyers</a>
+        </div>`;
+      checkAuth();
+      return;
+    }
     if (data.error) {
-      det.innerHTML = '<div class="empty">Error: ' + data.error + (data.loginUrl ? ' <a href="'+data.loginUrl+'">Login</a>' : '') + '</div>';
+      det.innerHTML = '<div class="empty">Error: ' + (data.message || data.error) + '</div>';
       return;
     }
     if (!data.ok) {
-      det.innerHTML = '<div class="empty">Cannot analyze ' + sym + ': ' + (data.reason || 'unknown') + '</div>';
+      det.innerHTML = '<div class="empty" style="padding:40px">' + (data.reason || 'Could not analyze ' + sym) + '</div>';
       return;
     }
     renderStock(data);
