@@ -21,9 +21,38 @@ const APP_ID = process.env.FYERS_APP_ID || '';
 const SECRET = process.env.FYERS_SECRET || '';
 const REDIRECT = process.env.FYERS_REDIRECT || 'https://investiq-ir5k.onrender.com/auth/callback';
 
-// ─── Token (in-memory) ────────────────────────────────
+// ─── Token (persisted to disk to survive Render spin-down) ────
+const fs = require('fs');
+const TOKEN_FILE = '/tmp/fyers-token.json';
+
 let accessToken = '';
 let tokenTime = 0;
+
+function saveToken() {
+  try {
+    fs.writeFileSync(TOKEN_FILE, JSON.stringify({ accessToken, tokenTime }));
+  } catch (e) { console.error('[token save]', e.message); }
+}
+
+function loadToken() {
+  try {
+    if (!fs.existsSync(TOKEN_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf-8'));
+    // Fyers tokens valid ~24 hours; treat as expired after 23h to be safe
+    if (data.tokenTime && Date.now() - data.tokenTime < 23 * 3600 * 1000) {
+      accessToken = data.accessToken;
+      tokenTime = data.tokenTime;
+      const ageMin = Math.round((Date.now() - tokenTime) / 60000);
+      console.log(`[token] Restored from disk (age ${ageMin} min)`);
+    } else {
+      console.log('[token] Disk token expired, ignoring');
+      try { fs.unlinkSync(TOKEN_FILE); } catch (_) {}
+    }
+  } catch (e) { console.error('[token load]', e.message); }
+}
+
+// Restore on boot
+loadToken();
 
 function getFyers() {
   const fyers = new fyersModel({ path: '/tmp', enableLogging: false });
@@ -64,7 +93,8 @@ app.get('/auth/callback', async (req, res) => {
     if (response.s === 'ok' && response.access_token) {
       accessToken = response.access_token;
       tokenTime = Date.now();
-      console.log('[AUTH] ✅ Access token received');
+      saveToken();
+      console.log('[AUTH] ✅ Access token received and persisted');
       res.redirect('/?auth=success');
     } else {
       console.log('[AUTH] ❌ Token error:', response);
@@ -87,13 +117,15 @@ app.get('/api/auth/status', (req, res) => {
 app.get('/auth/logout', (req, res) => {
   accessToken = '';
   tokenTime = 0;
+  try { fs.unlinkSync(TOKEN_FILE); } catch (_) {}
   res.redirect('/');
 });
 
 function requireAuth(req, res, next) {
   if (!accessToken) {
     return res.status(401).json({
-      error: 'Not authenticated. Login at /auth/login',
+      error: 'auth_required',
+      message: 'Fyers session expired. Please reconnect.',
       loginUrl: '/auth/login',
     });
   }
@@ -167,7 +199,17 @@ async function getHistoryShortKey(fyersSym, resolution = 'D', days = 365) {
   // Don't silently swallow errors — they cause the scanner to return 0 results.
   if (r?.s !== 'ok') {
     const msg = r?.message || r?.s || 'unknown';
-    console.error(`[fyers history ${fyersSym}] ${msg}`);
+    const code = r?.code;
+    console.error(`[fyers history ${fyersSym}] ${msg} (code ${code})`);
+    // Auth errors: codes -16 (token expired), -17 (invalid token), -300/-352 (auth)
+    // Clear token so /api/auth/status reflects reality
+    if (code === -16 || code === -17 || code === -300 || code === -352 ||
+        /token|auth|expired|unauthor/i.test(String(msg))) {
+      console.error('[fyers] Token appears invalid, clearing');
+      accessToken = '';
+      tokenTime = 0;
+      try { fs.unlinkSync(TOKEN_FILE); } catch (_) {}
+    }
     // Cache empty result briefly so we don't hammer Fyers retrying bad symbols
     cacheSet(ck, [], 5 * 60 * 1000);
     return [];
