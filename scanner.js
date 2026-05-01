@@ -2,7 +2,7 @@
 // Pipeline: Universe -> getHistory (cached) -> trendTemplate filter
 // -> RS rank vs Nifty -> sort -> generateSignal -> return ranked list
 
-const { fullAnalysis, generateSignal } = require('./ta');
+const TA = require('./ta');
 const { NIFTY_100, toFyersEquity } = require('./universe');
 
 // Compute relative strength: stock 6M return vs Nifty 6M return
@@ -65,8 +65,8 @@ async function runScanner(fetchHistoryFn, opts = {}) {
 
   // Run TA on each, build result rows
   const results = data.map((d) => {
-    const a = fullAnalysis(d.candles);
-    const sig = generateSignal(a);
+    const a = TA.fullAnalysis(d.candles);
+    const sig = TA.generateSignal(a);
     return {
       symbol: d.symbol,
       fyersSymbol: d.fyersSym,

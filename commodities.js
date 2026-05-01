@@ -2,7 +2,7 @@
 // Sources: Fyers (MCX futures), CoinGecko (crypto, free, no key)
 
 const { COMMODITIES, CRYPTO } = require('./universe');
-const { fullAnalysis, generateSignal } = require('./ta');
+const TA = require('./ta');
 
 // Fetch crypto prices in INR via CoinGecko
 async function fetchCrypto() {
@@ -69,8 +69,8 @@ async function fetchCommodities(fetchQuoteFn, fetchHistoryFn) {
         fetchQuoteFn(c.fyers).catch(() => null),
         fetchHistoryFn(c.fyers).catch(() => []),
       ]);
-      const a = candles && candles.length > 30 ? fullAnalysis(candles) : null;
-      const sig = a ? generateSignal(a) : null;
+      const a = candles && candles.length > 30 ? TA.fullAnalysis(candles) : null;
+      const sig = a ? TA.generateSignal(a) : null;
       out.push({
         ...c,
         price: quote?.lp ?? quote?.ltp ?? a?.price ?? null,

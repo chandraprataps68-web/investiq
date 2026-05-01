@@ -1,47 +1,110 @@
-// server.js — InvestIQ Pro v6 backend
-// Express + fyers-api-v3 + scanner + premarket + commodities
+// ═══════════════════════════════════════════════════════════
+//  InvestIQ Pro v6 — backend
+//  Preserves all v5 routes + adds scanner, premarket, commodities, search
+// ═══════════════════════════════════════════════════════════
 
 const express = require('express');
 const path = require('path');
 const { fyersModel } = require('fyers-api-v3');
 
+const TA = require('./ta');
 const { runScanner } = require('./scanner');
 const { getPreMarketSnapshot } = require('./premarket');
 const { fetchCrypto, fetchCryptoHistory, fetchCommodities } = require('./commodities');
 const { NIFTY_50, NIFTY_NEXT_50, NIFTY_100, toFyersEquity } = require('./universe');
-const { fullAnalysis, generateSignal } = require('./ta');
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ─── Config (matches v5 env var names) ──────────────────
+const APP_ID = process.env.FYERS_APP_ID || '';
+const SECRET = process.env.FYERS_SECRET || '';
+const REDIRECT = process.env.FYERS_REDIRECT || 'https://investiq-ir5k.onrender.com/auth/callback';
+
+// ─── Token (in-memory) ────────────────────────────────
+let accessToken = '';
+let tokenTime = 0;
+
+function getFyers() {
+  const fyers = new fyersModel({ path: '/tmp', enableLogging: false });
+  fyers.setAppId(APP_ID);
+  fyers.setRedirectUrl(REDIRECT);
+  if (accessToken) fyers.setAccessToken(accessToken);
+  return fyers;
+}
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ---------- Config ----------
-const APP_ID = process.env.FYERS_APP_ID || 'WJWQGM6JWM-100';
-const APP_SECRET = process.env.FYERS_SECRET;
-const REDIRECT_URI = process.env.REDIRECT_URI || 'https://investiq-ir5k.onrender.com/callback';
-const PORT = process.env.PORT || 10000;
+// ═══════════════════════════════════════════════════════════
+//  AUTH (v5 paths preserved exactly)
+// ═══════════════════════════════════════════════════════════
 
-if (!APP_SECRET) {
-  console.warn('⚠ FYERS_SECRET not set — Fyers calls will fail');
-}
+app.get('/auth/login', (req, res) => {
+  const fyers = getFyers();
+  const url = fyers.generateAuthCode();
+  console.log('[AUTH] Redirecting to Fyers login:', url);
+  res.redirect(url);
+});
 
-// In-memory token store (single-user app; fine for personal use)
-let accessToken = null;
-let tokenExpiry = 0;
+app.get('/auth/callback', async (req, res) => {
+  const authCode = req.query.auth_code;
+  const error = req.query.error;
+  if (error || !authCode) {
+    console.log('[AUTH] Error:', error || 'No auth_code');
+    return res.redirect('/?auth=error');
+  }
+  try {
+    const fyers = getFyers();
+    const response = await fyers.generate_access_token({
+      client_id: APP_ID,
+      secret_key: SECRET,
+      auth_code: authCode,
+    });
+    if (response.s === 'ok' && response.access_token) {
+      accessToken = response.access_token;
+      tokenTime = Date.now();
+      console.log('[AUTH] ✅ Access token received');
+      res.redirect('/?auth=success');
+    } else {
+      console.log('[AUTH] ❌ Token error:', response);
+      res.redirect('/?auth=error&msg=' + encodeURIComponent(response.message || 'Unknown error'));
+    }
+  } catch (e) {
+    console.log('[AUTH] ❌ Exception:', e.message);
+    res.redirect('/?auth=error&msg=' + encodeURIComponent(e.message));
+  }
+});
 
-const fyers = new fyersModel({ path: '/tmp', enableLogging: false });
-fyers.setAppId(APP_ID);
-fyers.setRedirectUrl(REDIRECT_URI);
+app.get('/api/auth/status', (req, res) => {
+  res.json({
+    authenticated: !!accessToken,
+    tokenAge: tokenTime ? Math.round((Date.now() - tokenTime) / 60000) + ' min' : null,
+    appId: APP_ID ? APP_ID.substring(0, 4) + '...' : 'not set',
+  });
+});
 
-function ensureAuth(req, res, next) {
-  if (!accessToken || Date.now() > tokenExpiry) {
-    return res.status(401).json({ error: 'not_authenticated', loginUrl: '/login' });
+app.get('/auth/logout', (req, res) => {
+  accessToken = '';
+  tokenTime = 0;
+  res.redirect('/');
+});
+
+function requireAuth(req, res, next) {
+  if (!accessToken) {
+    return res.status(401).json({
+      error: 'Not authenticated. Login at /auth/login',
+      loginUrl: '/auth/login',
+    });
   }
   next();
 }
 
-// ---------- In-memory cache ----------
-const cache = new Map(); // key -> { ts, ttl, data }
+// ═══════════════════════════════════════════════════════════
+//  CACHE
+// ═══════════════════════════════════════════════════════════
+
+const cache = new Map();
 const cacheGet = (k) => {
   const v = cache.get(k);
   if (!v) return null;
@@ -50,145 +113,183 @@ const cacheGet = (k) => {
 };
 const cacheSet = (k, data, ttlMs) => cache.set(k, { ts: Date.now(), ttl: ttlMs, data });
 
-// ---------- OAuth flow ----------
-app.get('/login', (req, res) => {
-  const url = fyers.generateAuthCode();
-  res.redirect(url);
-});
+const isMarketHours = () => {
+  const now = new Date();
+  const ist = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const day = ist.getDay();
+  const mins = ist.getHours() * 60 + ist.getMinutes();
+  return day >= 1 && day <= 5 && mins >= 9 * 60 + 15 && mins < 15 * 60 + 30;
+};
 
-app.get('/callback', async (req, res) => {
-  const { auth_code, s } = req.query;
-  if (!auth_code) return res.status(400).send('No auth_code received');
-  try {
-    const result = await fyers.generate_access_token({
-      secret_key: APP_SECRET,
-      auth_code,
-    });
-    if (result.s === 'ok') {
-      accessToken = result.access_token;
-      tokenExpiry = Date.now() + 23 * 3600 * 1000; // ~23h
-      fyers.setAccessToken(accessToken);
-      res.redirect('/');
-    } else {
-      res.status(500).json({ error: result });
-    }
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// ═══════════════════════════════════════════════════════════
+//  FYERS HELPERS (cached, used by scanner/commodities)
+// ═══════════════════════════════════════════════════════════
 
-app.get('/api/auth-status', (req, res) => {
-  res.json({
-    authenticated: !!accessToken && Date.now() < tokenExpiry,
-    expiresIn: accessToken ? Math.max(0, tokenExpiry - Date.now()) : 0,
-  });
-});
-
-// ---------- Fyers helpers ----------
-async function getQuote(fyersSym) {
+async function getQuoteOne(fyersSym) {
   const ck = `q:${fyersSym}`;
   const cached = cacheGet(ck);
   if (cached) return cached;
+  const fyers = getFyers();
   const r = await fyers.getQuotes([fyersSym]);
   const data = r?.d?.[0]?.v || null;
-  if (data) cacheSet(ck, data, 30 * 1000); // 30s
+  if (data) cacheSet(ck, data, 30 * 1000);
   return data;
 }
 
-async function getQuotes(symArr) {
-  // Fyers limit: ~50 symbols per call
+async function getQuotesBatch(symArr) {
   const out = {};
+  const fyers = getFyers();
   for (let i = 0; i < symArr.length; i += 50) {
     const batch = symArr.slice(i, i + 50);
     const r = await fyers.getQuotes(batch);
-    if (r?.d) {
-      r.d.forEach((q) => { if (q.n) out[q.n] = q.v; });
-    }
+    if (r?.d) r.d.forEach((q) => { if (q.n) out[q.n] = q.v; });
   }
   return out;
 }
 
-async function getHistory(fyersSym, resolution = 'D', days = 365) {
+async function getHistoryShortKey(fyersSym, resolution = 'D', days = 365) {
   const ck = `h:${fyersSym}:${resolution}:${days}`;
   const cached = cacheGet(ck);
   if (cached) return cached;
+  const fyers = getFyers();
   const to = Math.floor(Date.now() / 1000);
   const from = to - days * 86400;
   const r = await fyers.getHistory({
     symbol: fyersSym,
     resolution,
-    date_format: '0',
+    date_format: 0,
     range_from: String(from),
     range_to: String(to),
     cont_flag: '1',
   });
+  // Internal canonical: short keys (t,o,h,l,c,v) — used by ta.js & scanner.js
   const candles = (r?.candles || []).map((c) => ({
     t: c[0], o: c[1], h: c[2], l: c[3], c: c[4], v: c[5],
   }));
-  // Cache for 10 min during market hours, 60 min outside
-  const isMarketHours = (() => {
-    const d = new Date();
-    const ist = new Date(d.getTime() + (5.5 * 3600 * 1000) - (d.getTimezoneOffset() * 60000));
-    const day = ist.getUTCDay();
-    const hr = ist.getUTCHours();
-    return day >= 1 && day <= 5 && hr >= 9 && hr < 16;
-  })();
-  cacheSet(ck, candles, isMarketHours ? 10 * 60 * 1000 : 60 * 60 * 1000);
+  cacheSet(ck, candles, isMarketHours() ? 10 * 60 * 1000 : 60 * 60 * 1000);
   return candles;
 }
 
-// ---------- API routes ----------
+// Long-key form (legacy v5 + chart libs)
+const toLongKeyCandles = (candles) =>
+  candles.map((c) => ({ time: c.t, open: c.o, high: c.h, low: c.l, close: c.c, volume: c.v }));
 
-// Live quote(s)
-app.get('/api/quote/:symbol', ensureAuth, async (req, res) => {
-  try {
-    const sym = decodeURIComponent(req.params.symbol);
-    const q = await getQuote(sym);
-    res.json(q);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+// ═══════════════════════════════════════════════════════════
+//  V5 LEGACY ROUTES (preserved exactly — your old UI keeps working)
+// ═══════════════════════════════════════════════════════════
 
-app.post('/api/quotes', ensureAuth, async (req, res) => {
+// Old /api/quotes?symbols=NSE:RELIANCE-EQ,NSE:TCS-EQ
+app.get('/api/quotes', requireAuth, async (req, res) => {
   try {
-    const { symbols } = req.body;
-    if (!Array.isArray(symbols)) return res.status(400).json({ error: 'symbols array required' });
-    const data = await getQuotes(symbols);
+    const symbols = req.query.symbols;
+    if (!symbols) return res.status(400).json({ error: 'symbols required' });
+    const fyers = getFyers();
+    const data = await fyers.getQuotes([...symbols.split(',').map((s) => s.trim())]);
     res.json(data);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Historical candles
-app.get('/api/history/:symbol', ensureAuth, async (req, res) => {
+app.get('/api/depth', requireAuth, async (req, res) => {
+  try {
+    const symbols = req.query.symbols;
+    if (!symbols) return res.status(400).json({ error: 'symbols required' });
+    const fyers = getFyers();
+    const data = await fyers.getMarketDepth({
+      symbol: symbols.split(',').map((s) => s.trim()),
+      ohlcv_flag: 1,
+    });
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Old /api/history?symbol=NSE:RELIANCE-EQ&resolution=D
+app.get('/api/history', requireAuth, async (req, res) => {
+  try {
+    const { symbol, resolution, from, to } = req.query;
+    if (!symbol) return res.status(400).json({ error: 'symbol required' });
+    const fyers = getFyers();
+    const now = Math.floor(Date.now() / 1000);
+    const data = await fyers.getHistory({
+      symbol,
+      resolution: resolution || 'D',
+      date_format: 0,
+      range_from: from || String(now - 365 * 86400),
+      range_to: to || String(now),
+      cont_flag: '1',
+    });
+    const candles = (data.candles || []).map((c) => ({
+      time: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5],
+    }));
+    res.json({ symbol, candles });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/market-status', requireAuth, async (req, res) => {
+  try {
+    const fyers = getFyers();
+    const data = await fyers.market_status();
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/profile', requireAuth, async (req, res) => {
+  try { res.json(await getFyers().get_profile()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/holdings', requireAuth, async (req, res) => {
+  try { res.json(await getFyers().get_holdings()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/positions', requireAuth, async (req, res) => {
+  try { res.json(await getFyers().get_positions()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/funds', requireAuth, async (req, res) => {
+  try { res.json(await getFyers().get_funds()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  V6 NEW ROUTES
+// ═══════════════════════════════════════════════════════════
+
+// Path-style single quote — used by new UI
+app.get('/api/quote/:symbol', requireAuth, async (req, res) => {
   try {
     const sym = decodeURIComponent(req.params.symbol);
-    const resolution = req.query.resolution || 'D';
-    const days = parseInt(req.query.days || '365', 10);
-    const candles = await getHistory(sym, resolution, days);
-    res.json({ candles });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    res.json(await getQuoteOne(sym));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Stock search — full analysis for any NSE equity
-app.get('/api/analyze/:symbol', ensureAuth, async (req, res) => {
+// Path-style history (auto-prefixes plain symbols to NSE:...-EQ)
+app.get('/api/history/:symbol', requireAuth, async (req, res) => {
   try {
     let sym = decodeURIComponent(req.params.symbol).toUpperCase();
-    // Accept either plain symbol or full Fyers format
     if (!sym.includes(':')) sym = toFyersEquity(sym);
-    const candles = await getHistory(sym, 'D', 400);
+    const resolution = req.query.resolution || 'D';
+    const days = parseInt(req.query.days || '365', 10);
+    const candles = await getHistoryShortKey(sym, resolution, days);
+    res.json({ symbol: sym, candles: toLongKeyCandles(candles) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Full single-stock analysis with TA + signal + targets
+app.get('/api/analyze/:symbol', requireAuth, async (req, res) => {
+  try {
+    let sym = decodeURIComponent(req.params.symbol).toUpperCase();
+    if (!sym.includes(':')) sym = toFyersEquity(sym);
+    const candles = await getHistoryShortKey(sym, 'D', 400);
     if (!candles || candles.length < 30) {
       return res.json({ ok: false, reason: 'insufficient data', symbol: sym });
     }
-    const a = fullAnalysis(candles);
-    const sig = generateSignal(a);
-    const quote = await getQuote(sym).catch(() => null);
-    res.json({
-      ok: true,
-      symbol: sym,
-      quote,
-      analysis: a,
-      signal: sig,
-    });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const a = TA.fullAnalysis(candles);
+    const sig = TA.generateSignal(a);
+    const quote = await getQuoteOne(sym).catch(() => null);
+    res.json({ ok: true, symbol: sym, quote, analysis: a, signal: sig });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Universe search (autocomplete)
@@ -199,24 +300,26 @@ app.get('/api/universe', (req, res) => {
   res.json(all.filter((x) => x.symbol.includes(q)).slice(0, 20));
 });
 
-// Market scanner (cached 15 min)
-app.get('/api/scanner', ensureAuth, async (req, res) => {
+// Market scanner
+app.get('/api/scanner', requireAuth, async (req, res) => {
   try {
-    const universe = req.query.universe; // 'nifty50' | 'next50' | 'nifty100'
-    const list = universe === 'nifty50' ? NIFTY_50 : universe === 'next50' ? NIFTY_NEXT_50 : NIFTY_100;
+    const universe = req.query.universe;
+    const list = universe === 'nifty50' ? NIFTY_50
+      : universe === 'next50' ? NIFTY_NEXT_50
+      : NIFTY_100;
     const ck = `scan:${universe || 'nifty100'}`;
     const cached = cacheGet(ck);
     if (cached) return res.json({ ...cached, fromCache: true });
     const result = await runScanner(
-      (sym) => getHistory(sym, 'D', 400),
+      (sym) => getHistoryShortKey(sym, 'D', 400),
       { universe: list, concurrency: 4 }
     );
     cacheSet(ck, result, 15 * 60 * 1000);
     res.json(result);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Pre-market dashboard (cached 5 min)
+// Pre-market dashboard
 app.get('/api/premarket', async (req, res) => {
   try {
     const ck = 'premarket';
@@ -225,60 +328,76 @@ app.get('/api/premarket', async (req, res) => {
     const data = await getPreMarketSnapshot();
     cacheSet(ck, data, 5 * 60 * 1000);
     res.json(data);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Commodities (Fyers MCX) + Crypto (CoinGecko)
-app.get('/api/commodities', ensureAuth, async (req, res) => {
+// Commodities + crypto
+app.get('/api/commodities', requireAuth, async (req, res) => {
   try {
     const ck = 'commodities';
     const cached = cacheGet(ck);
     if (cached) return res.json({ ...cached, fromCache: true });
     const [commodities, crypto] = await Promise.all([
-      fetchCommodities(getQuote, (s) => getHistory(s, 'D', 200)),
+      fetchCommodities(getQuoteOne, (s) => getHistoryShortKey(s, 'D', 200)),
       fetchCrypto(),
     ]);
     const data = { commodities, crypto, timestamp: new Date().toISOString() };
-    cacheSet(ck, data, 60 * 1000); // 1 min
+    cacheSet(ck, data, 60 * 1000);
     res.json(data);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/crypto-history/:id', async (req, res) => {
   try {
-    const candles = await fetchCryptoHistory(req.params.id, parseInt(req.query.days || '90', 10));
+    const candles = await fetchCryptoHistory(
+      req.params.id,
+      parseInt(req.query.days || '90', 10)
+    );
     res.json({ candles });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Option chain (basic; fuller features later)
-app.get('/api/option-chain/:symbol', ensureAuth, async (req, res) => {
+// Option chain (Fyers — guarded since SDK builds vary)
+app.get('/api/option-chain/:symbol', requireAuth, async (req, res) => {
   try {
     let sym = decodeURIComponent(req.params.symbol);
     if (!sym.includes(':')) sym = toFyersEquity(sym);
-    // fyers.getOptionChain may not be in all SDK versions; guard it
+    const fyers = getFyers();
     if (typeof fyers.getOptionChain !== 'function') {
       return res.status(501).json({ error: 'option chain not available in this SDK build' });
     }
     const r = await fyers.getOptionChain({ symbol: sym, strikecount: 10 });
     res.json(r);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Health + warm endpoint (Cloudflare Worker pings this every 10 min during market hrs)
+// ═══════════════════════════════════════════════════════════
+//  HEALTH
+// ═══════════════════════════════════════════════════════════
+
 app.get('/api/health', (req, res) => {
   res.json({
-    ok: true,
-    authenticated: !!accessToken && Date.now() < tokenExpiry,
+    version: '6.0',
+    authenticated: !!accessToken,
+    appId: APP_ID ? 'set' : 'missing',
+    secret: SECRET ? 'set' : 'missing',
+    tokenAge: tokenTime ? Math.round((Date.now() - tokenTime) / 60000) + ' min' : 'no token',
     cacheSize: cache.size,
-    uptime: process.uptime(),
-    ts: new Date().toISOString(),
+    uptime: Math.round(process.uptime()) + 's',
+    marketHours: isMarketHours(),
   });
 });
 
-// ---------- Static fallback ----------
+// ═══════════════════════════════════════════════════════════
+//  SPA fallback
+// ═══════════════════════════════════════════════════════════
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => {
   console.log(`InvestIQ Pro v6 listening on :${PORT}`);
+  console.log(`App ID: ${APP_ID ? APP_ID.substring(0, 6) + '...' : 'NOT SET'}`);
+  console.log(`Secret: ${SECRET ? 'SET' : 'NOT SET'}`);
+  console.log(`Redirect: ${REDIRECT}`);
+  console.log(`Login: /auth/login`);
 });
