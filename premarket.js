@@ -1,44 +1,111 @@
 // premarket.js — Pre-Market Dashboard data + bias computation
-// Fetches: global cues (Yahoo), news (RSS), FII/DII (cached/scraped)
-// Outputs: directional bias card with reasons
+// Multi-source strategy (Render IPs are often blocked by Yahoo):
+//   1. Stooq — free, no auth, no IP block, returns CSV. Primary source.
+//   2. Yahoo chart endpoint — different from quote endpoint, no crumb required.
+//   3. FII/DII via Moneycontrol mirror.
 
 const { GLOBAL_CUES, NEWS_FEEDS } = require('./universe');
 
-// Yahoo Finance unofficial quote endpoint — free, no key
-// Format: https://query1.finance.yahoo.com/v7/finance/quote?symbols=...
-async function fetchGlobalCues() {
-  const symbols = GLOBAL_CUES.map((g) => g.yahoo).join(',');
-  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols)}`;
+// ─── Symbol mapping for Stooq ──────────────────────────
+// Stooq uses different ticker conventions. Mapping based on stooq.com
+const STOOQ_MAP = {
+  '^NSEI': '^nsei',         // GIFT/Nifty 50
+  '^DJI': '^dji',           // Dow Jones
+  '^IXIC': '^ixic',         // Nasdaq
+  '^GSPC': '^spx',          // S&P 500 (stooq uses ^spx)
+  '^N225': '^nkx',          // Nikkei (stooq: ^nkx)
+  '^HSI': '^hsi',           // Hang Seng
+  '^FTSE': '^ftm',          // FTSE 100 (stooq: ^ftm)
+  '^GDAXI': '^dax',         // DAX
+  'BZ=F': 'cb.f',           // Brent crude futures (stooq cb.f)
+  'DX-Y.NYB': 'dx.f',       // Dollar index futures
+  'INR=X': 'usdinr',        // USD/INR
+  '^VIX': '^vix',           // VIX
+};
+
+// ─── Fetch from Stooq (primary) ────────────────────────
+// Stooq returns lightweight CSV: Symbol,Date,Time,Open,High,Low,Close,Volume
+async function fetchStooqQuote(stooqSym) {
+  const url = `https://stooq.com/q/l/?s=${encodeURIComponent(stooqSym)}&f=sd2t2ohlcv&h&e=csv`;
   try {
     const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 InvestIQ/6.0',
-        Accept: 'application/json',
-      },
+      headers: { 'User-Agent': 'InvestIQ/6.0' },
+      signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) throw new Error(`Yahoo HTTP ${res.status}`);
-    const json = await res.json();
-    const quotes = json?.quoteResponse?.result || [];
-
-    return GLOBAL_CUES.map((cue) => {
-      const q = quotes.find((x) => x.symbol === cue.yahoo);
-      if (!q) return { ...cue, error: 'no data' };
-      return {
-        ...cue,
-        price: q.regularMarketPrice,
-        change: q.regularMarketChange,
-        changePct: q.regularMarketChangePercent,
-        prevClose: q.regularMarketPreviousClose,
-        marketState: q.marketState, // PRE / REGULAR / POST / CLOSED
-      };
-    });
+    if (!res.ok) throw new Error(`stooq HTTP ${res.status}`);
+    const text = await res.text();
+    const lines = text.trim().split('\n');
+    if (lines.length < 2) throw new Error('empty CSV');
+    const headers = lines[0].split(',');
+    const values = lines[1].split(',');
+    const row = {};
+    headers.forEach((h, i) => { row[h.trim()] = values[i]?.trim(); });
+    if (row.Close === 'N/D' || !row.Close) throw new Error('no close price');
+    const close = parseFloat(row.Close);
+    const open = parseFloat(row.Open);
+    if (!isFinite(close)) throw new Error('invalid close');
+    return {
+      price: close,
+      open,
+      high: parseFloat(row.High),
+      low: parseFloat(row.Low),
+      // Stooq doesn't give prev close in the lite endpoint;
+      // approximate change vs open as a fallback indicator
+      change: close - open,
+      changePct: open > 0 ? ((close - open) / open) * 100 : 0,
+      source: 'stooq',
+    };
   } catch (err) {
-    console.error('Global cues error:', err.message);
-    return GLOBAL_CUES.map((c) => ({ ...c, error: err.message }));
+    return { error: err.message, source: 'stooq' };
   }
 }
 
-// Simple RSS parser — RSS feeds have a predictable structure
+// ─── Yahoo chart endpoint fallback (no crumb required) ─
+async function fetchYahooChart(yahooSym) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}?interval=1d&range=5d`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`yahoo HTTP ${res.status}`);
+    const json = await res.json();
+    const result = json?.chart?.result?.[0];
+    if (!result) throw new Error('no chart data');
+    const meta = result.meta;
+    return {
+      price: meta.regularMarketPrice,
+      prevClose: meta.chartPreviousClose,
+      change: meta.regularMarketPrice - meta.chartPreviousClose,
+      changePct: ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100,
+      source: 'yahoo-chart',
+    };
+  } catch (err) {
+    return { error: err.message, source: 'yahoo-chart' };
+  }
+}
+
+// ─── Combined fetch: try Stooq, fall back to Yahoo ─────
+async function fetchGlobalCues() {
+  const results = await Promise.all(
+    GLOBAL_CUES.map(async (cue) => {
+      const stooqSym = STOOQ_MAP[cue.yahoo];
+      let data = stooqSym ? await fetchStooqQuote(stooqSym) : { error: 'no stooq mapping' };
+      if (data.error) {
+        // Fall back to Yahoo chart endpoint
+        const yh = await fetchYahooChart(cue.yahoo);
+        if (!yh.error) data = yh;
+      }
+      return { ...cue, ...data };
+    })
+  );
+  return results;
+}
+
+// ─── RSS parser ────────────────────────────────────────
 function parseRSS(xml) {
   const items = [];
   const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/g;
@@ -52,113 +119,134 @@ function parseRSS(xml) {
     const block = m[1];
     const title = (titleRegex.exec(block) || [])[1]?.trim();
     const link = (linkRegex.exec(block) || [])[1]?.trim();
-    const date = (dateRegex.exec(block) || [])[1]?.trim();
+    const dateRaw = (dateRegex.exec(block) || [])[1]?.trim();
     const desc = (descRegex.exec(block) || [])[1]?.trim();
+    // Robust date parse: RSS uses RFC822 format (e.g., "Thu, 01 May 2026 12:34:56 GMT")
+    let dateISO = null;
+    if (dateRaw) {
+      const d = new Date(dateRaw);
+      if (!isNaN(d.getTime())) dateISO = d.toISOString();
+    }
     if (title && link) {
-      items.push({ title, link, date, desc: desc?.replace(/<[^>]+>/g, '').slice(0, 200) });
+      items.push({
+        title: title.replace(/\s+/g, ' '),
+        link,
+        date: dateISO,
+        desc: desc?.replace(/<[^>]+>/g, '').slice(0, 200),
+      });
     }
   }
   return items;
 }
 
-async function fetchNews(maxPerFeed = 5) {
+async function fetchNews(maxPerFeed = 8) {
   const all = [];
-  for (const feed of NEWS_FEEDS) {
+  await Promise.all(NEWS_FEEDS.map(async (feed) => {
     try {
       const res = await fetch(feed.url, {
         headers: { 'User-Agent': 'Mozilla/5.0 InvestIQ/6.0' },
+        signal: AbortSignal.timeout(8000),
       });
-      if (!res.ok) continue;
+      if (!res.ok) return;
       const xml = await res.text();
       const items = parseRSS(xml).slice(0, maxPerFeed);
       items.forEach((it) => all.push({ ...it, source: feed.name }));
     } catch (err) {
       console.error(`News ${feed.name}:`, err.message);
     }
-  }
-  // Sort by date, newest first
-  all.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-  return all.slice(0, 15);
+  }));
+  // Sort newest first; items with no date go last
+  all.sort((a, b) => {
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return new Date(b.date) - new Date(a.date);
+  });
+  return all.slice(0, 20);
 }
 
-// FII/DII data — NSE publishes daily but blocks bots. We use an aggregator.
-// Fallback: parse from a public mirror. Best practice = scheduled CF Worker.
+// ─── FII/DII — try Moneycontrol mirror ─────────────────
 async function fetchFIIDII() {
+  // Moneycontrol publishes a static daily JSON-ish summary that's more stable than Trendlyne
+  const url = 'https://api.moneycontrol.com/mcapi/v1/markets/get-fii-dii-investments?type=fno&exchange=N';
   try {
-    // Trendlyne has a public JSON endpoint that updates EOD
-    const res = await fetch('https://trendlyne.com/macro-data/fii-dii/snapshot/', {
-      headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html' },
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 InvestIQ/6.0',
+        'Accept': 'application/json',
+      },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) throw new Error(`FII/DII HTTP ${res.status}`);
-    const html = await res.text();
-    // Light scrape — extract net values
-    // Look for "FII" and "DII" with numeric net values
-    const fiiMatch = html.match(/FII[^<]*<[^>]*>[^<]*<[^>]*>([\-\+]?[\d,]+\.\d+)/i);
-    const diiMatch = html.match(/DII[^<]*<[^>]*>[^<]*<[^>]*>([\-\+]?[\d,]+\.\d+)/i);
+    if (!res.ok) throw new Error(`mc HTTP ${res.status}`);
+    const json = await res.json();
+    // Schema may vary; defensively extract
+    const data = json?.data || json;
+    const latestFII = data?.fii?.[0]?.netValue ?? data?.fiiDataDate ?? null;
+    const latestDII = data?.dii?.[0]?.netValue ?? null;
     return {
-      fii: fiiMatch ? parseFloat(fiiMatch[1].replace(/,/g, '')) : null,
-      dii: diiMatch ? parseFloat(diiMatch[1].replace(/,/g, '')) : null,
-      source: 'trendlyne',
+      fii: typeof latestFII === 'number' ? latestFII : null,
+      dii: typeof latestDII === 'number' ? latestDII : null,
+      source: 'moneycontrol',
       note: 'Cash market, T-1 (previous day)',
+      raw: data?.fiiDataDate || null,
     };
   } catch (err) {
     return { fii: null, dii: null, error: err.message };
   }
 }
 
-// Compute directional bias from inputs
-function computeBias({ globalCues, fiiDii, vix }) {
+// ─── Compute directional bias ──────────────────────────
+function computeBias({ globalCues, fiiDii }) {
   const reasons = [];
-  let score = 0; // -10 (very bearish) to +10 (very bullish)
+  let score = 0;
 
-  // GIFT Nifty as primary indicator
   const gift = globalCues.find((g) => g.id === 'GIFT_NIFTY');
-  if (gift && gift.changePct != null) {
-    if (gift.changePct > 0.5) { score += 3; reasons.push(`GIFT Nifty +${gift.changePct.toFixed(2)}% (positive cue)`); }
-    else if (gift.changePct < -0.5) { score -= 3; reasons.push(`GIFT Nifty ${gift.changePct.toFixed(2)}% (negative cue)`); }
-    else reasons.push(`GIFT Nifty flat (${gift.changePct?.toFixed(2)}%)`);
+  if (gift && gift.changePct != null && !gift.error) {
+    if (gift.changePct > 0.5) { score += 3; reasons.push(`GIFT/Nifty +${gift.changePct.toFixed(2)}% (positive cue)`); }
+    else if (gift.changePct < -0.5) { score -= 3; reasons.push(`GIFT/Nifty ${gift.changePct.toFixed(2)}% (negative cue)`); }
+    else reasons.push(`Nifty flat (${gift.changePct.toFixed(2)}%)`);
   }
 
-  // US markets close = direct cue for next-day Nifty
   const dow = globalCues.find((g) => g.id === 'DOW');
-  const nasdaq = globalCues.find((g) => g.id === 'NASDAQ');
-  if (dow && dow.changePct != null) {
+  if (dow && dow.changePct != null && !dow.error) {
     if (dow.changePct > 0.5) { score += 2; reasons.push(`Dow closed +${dow.changePct.toFixed(2)}%`); }
     else if (dow.changePct < -0.5) { score -= 2; reasons.push(`Dow closed ${dow.changePct.toFixed(2)}%`); }
   }
-  if (nasdaq && nasdaq.changePct != null) {
+
+  const nasdaq = globalCues.find((g) => g.id === 'NASDAQ');
+  if (nasdaq && nasdaq.changePct != null && !nasdaq.error) {
     if (nasdaq.changePct > 1) { score += 2; reasons.push(`Nasdaq strong: +${nasdaq.changePct.toFixed(2)}%`); }
     else if (nasdaq.changePct < -1) { score -= 2; reasons.push(`Nasdaq weak: ${nasdaq.changePct.toFixed(2)}%`); }
   }
 
-  // Asian markets
   const nikkei = globalCues.find((g) => g.id === 'NIKKEI');
-  const hsi = globalCues.find((g) => g.id === 'HANGSENG');
-  if (nikkei && nikkei.changePct != null) {
+  if (nikkei && nikkei.changePct != null && !nikkei.error) {
     if (nikkei.changePct > 0.5) { score += 1; reasons.push(`Nikkei +${nikkei.changePct.toFixed(2)}%`); }
     else if (nikkei.changePct < -0.5) { score -= 1; reasons.push(`Nikkei ${nikkei.changePct.toFixed(2)}%`); }
   }
 
-  // FII/DII
-  if (fiiDii && fiiDii.fii != null) {
+  const hsi = globalCues.find((g) => g.id === 'HANGSENG');
+  if (hsi && hsi.changePct != null && !hsi.error) {
+    if (hsi.changePct > 0.5) { score += 1; reasons.push(`Hang Seng +${hsi.changePct.toFixed(2)}%`); }
+    else if (hsi.changePct < -0.5) { score -= 1; reasons.push(`Hang Seng ${hsi.changePct.toFixed(2)}%`); }
+  }
+
+  if (fiiDii?.fii != null) {
     if (fiiDii.fii > 1000) { score += 2; reasons.push(`FII bought ₹${fiiDii.fii.toFixed(0)} cr`); }
     else if (fiiDii.fii < -1000) { score -= 2; reasons.push(`FII sold ₹${Math.abs(fiiDii.fii).toFixed(0)} cr`); }
   }
-  if (fiiDii && fiiDii.dii != null) {
+  if (fiiDii?.dii != null) {
     if (fiiDii.dii > 1500) { score += 1; reasons.push(`DII bought ₹${fiiDii.dii.toFixed(0)} cr (cushion)`); }
   }
 
-  // Crude oil — inverse for India
   const brent = globalCues.find((g) => g.id === 'BRENT');
-  if (brent && brent.changePct != null) {
+  if (brent && brent.changePct != null && !brent.error) {
     if (brent.changePct > 2) { score -= 1; reasons.push(`Brent +${brent.changePct.toFixed(2)}% (negative for India)`); }
     else if (brent.changePct < -2) { score += 1; reasons.push(`Brent ${brent.changePct.toFixed(2)}% (positive for India)`); }
   }
 
-  // Dollar Index — strong dollar generally bad for EM
   const dxy = globalCues.find((g) => g.id === 'DXY');
-  if (dxy && dxy.changePct != null) {
+  if (dxy && dxy.changePct != null && !dxy.error) {
     if (dxy.changePct > 0.5) { score -= 1; reasons.push(`Dollar strong (DXY +${dxy.changePct.toFixed(2)}%)`); }
   }
 
@@ -172,7 +260,6 @@ function computeBias({ globalCues, fiiDii, vix }) {
   return { bias, score, reasons };
 }
 
-// Main entry point — call this from the API route
 async function getPreMarketSnapshot() {
   const [globalCues, news, fiiDii] = await Promise.all([
     fetchGlobalCues(),
@@ -189,4 +276,10 @@ async function getPreMarketSnapshot() {
   };
 }
 
-module.exports = { getPreMarketSnapshot, fetchGlobalCues, fetchNews, fetchFIIDII, computeBias };
+module.exports = {
+  getPreMarketSnapshot,
+  fetchGlobalCues,
+  fetchNews,
+  fetchFIIDII,
+  computeBias,
+};
