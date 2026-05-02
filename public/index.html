@@ -510,10 +510,50 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   </div>
 
   <!-- Section C: Stock OI Buildup -->
-  <div class="card">
+  <div class="card" style="margin-bottom:16px">
     <div class="card-title">Stock F&amp;O Buildup · Long/Short · Covering/Unwinding</div>
     <div id="buildup-summary" style="margin-bottom:14px"></div>
     <div id="buildup-table"><div class="loading"><span class="spinner"></span>Loading buildup...</div></div>
+  </div>
+
+  <!-- Section D: Strategy Builder -->
+  <div class="card">
+    <div class="card-title">Strategy Builder · P&amp;L Curve · Breakevens</div>
+
+    <!-- Preset chips + custom builder controls -->
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px">
+      <span style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-right:4px">PRESET:</span>
+      <button class="btn" onclick="loadPreset('longCall')">Long Call</button>
+      <button class="btn" onclick="loadPreset('longPut')">Long Put</button>
+      <button class="btn" onclick="loadPreset('bullCallSpread')">Bull Call Spread</button>
+      <button class="btn" onclick="loadPreset('ironCondor')">Iron Condor</button>
+      <button class="btn" onclick="loadPreset('longStraddle')">Long Straddle</button>
+      <span style="margin-left:auto;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">
+        Underlying: <select id="strat-underlying" onchange="onStratUnderlyingChange()" style="background:transparent;color:var(--ink);border:1px solid var(--line);padding:4px 8px;border-radius:4px;font-family:inherit;font-size:11px">
+          <option value="NIFTY">Nifty 50</option>
+          <option value="BANKNIFTY">Bank Nifty</option>
+          <option value="FINNIFTY">Fin Nifty</option>
+        </select>
+      </span>
+    </div>
+
+    <!-- Description of selected strategy -->
+    <div id="strat-description" style="font-size:12px;color:var(--ink-2);margin-bottom:14px;padding:10px 14px;background:rgba(74,158,255,.04);border-left:2px solid var(--accent);display:none"></div>
+
+    <!-- Legs editor table -->
+    <div id="strat-legs-wrap" style="margin-bottom:14px">
+      <div class="empty" style="padding:30px">Pick a preset above to get started, or build a custom strategy.</div>
+    </div>
+
+    <!-- Add leg / clear buttons -->
+    <div id="strat-controls" style="display:none;margin-bottom:14px;gap:8px">
+      <button class="btn" onclick="addLeg()">+ Add Leg</button>
+      <button class="btn" onclick="clearStrategy()">Clear</button>
+      <button class="btn btn-primary" onclick="analyzeStrategy()">Analyze</button>
+    </div>
+
+    <!-- Results: summary tiles + payoff curve -->
+    <div id="strat-results"></div>
   </div>
 </section>
 
@@ -985,23 +1025,6 @@ async function loadCommodities(force) {
     </div>
   `).join('');
 
-  const cryptoGrid = document.getElementById('crypto-grid');
-  cryptoGrid.innerHTML = (data.crypto || []).map(c => `
-    <div class="col-3">
-      <div class="commodity-card">
-        <div class="commodity-head">
-          <span class="commodity-icon">${c.icon}</span>
-          <span class="commodity-name">${c.name}</span>
-        </div>
-        <div class="commodity-price">${fmt.money(c.priceInr)}</div>
-        <div class="commodity-meta">
-          <span class="${fmt.cls(c.change24h)}">${fmt.pct(c.change24h)}</span>
-          <span>$${fmt.num(c.priceUsd, 2)}</span>
-        </div>
-      </div>
-    </div>
-  `).join('');
-
   // Draw sparklines
   document.querySelectorAll('canvas.spark').forEach(canvas => {
     try {
@@ -1009,6 +1032,67 @@ async function loadCommodities(force) {
       drawSparkline(canvas, points);
     } catch (e) {}
   });
+
+  // Crypto: fetch directly from browser to CoinGecko.
+  // Render's cloud IPs are blocked by most crypto APIs; user's home IP is not.
+  loadCryptoFromBrowser();
+}
+
+const CRYPTO_LIST = [
+  { id: 'bitcoin',     name: 'Bitcoin',  icon: '₿' },
+  { id: 'ethereum',    name: 'Ethereum', icon: 'Ξ' },
+  { id: 'solana',      name: 'Solana',   icon: '◎' },
+  { id: 'binancecoin', name: 'BNB',      icon: '⬢' },
+];
+
+async function loadCryptoFromBrowser() {
+  const cryptoGrid = document.getElementById('crypto-grid');
+  if (!cryptoGrid) return;
+  const ids = CRYPTO_LIST.map(c => c.id).join(',');
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=inr,usd&include_24hr_change=true`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status}`);
+    const data = await res.json();
+    cryptoGrid.innerHTML = CRYPTO_LIST.map(c => {
+      const d = data[c.id];
+      if (!d) return cryptoCardEmpty(c, 'no data');
+      return `
+        <div class="col-3">
+          <div class="commodity-card">
+            <div class="commodity-head">
+              <span class="commodity-icon">${c.icon}</span>
+              <span class="commodity-name">${c.name}</span>
+            </div>
+            <div class="commodity-price">${fmt.money(d.inr)}</div>
+            <div class="commodity-meta">
+              <span class="${fmt.cls(d.inr_24h_change)}">${fmt.pct(d.inr_24h_change)}</span>
+              <span>$${fmt.num(d.usd, 2)}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    cryptoGrid.innerHTML = CRYPTO_LIST.map(c => cryptoCardEmpty(c, 'unavailable')).join('');
+  }
+}
+
+function cryptoCardEmpty(c, label) {
+  return `
+    <div class="col-3">
+      <div class="commodity-card">
+        <div class="commodity-head">
+          <span class="commodity-icon">${c.icon}</span>
+          <span class="commodity-name">${c.name}</span>
+        </div>
+        <div class="commodity-price">—</div>
+        <div class="commodity-meta">
+          <span style="color:var(--ink-3);font-size:11px">${label}</span>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function drawSparkline(canvas, points) {
@@ -1353,6 +1437,290 @@ function buildupCls(b) {
   if (b === 'SHORT BUILDUP') return 'STRONG.SELL';
   if (b === 'LONG UNWINDING') return 'SELL';
   return 'HOLD';
+}
+
+// ============ Strategy Builder ============
+const STRAT_UNDERLYINGS = {
+  NIFTY:     { name: 'Nifty 50',   lotSize: 75,  spotFallback: 24000 },
+  BANKNIFTY: { name: 'Bank Nifty', lotSize: 30,  spotFallback: 55000 },
+  FINNIFTY:  { name: 'Fin Nifty',  lotSize: 65,  spotFallback: 25000 },
+};
+let stratLegs = [];
+let stratSpot = null;
+
+function getStratUnderlying() {
+  const u = document.getElementById('strat-underlying').value;
+  return { code: u, ...STRAT_UNDERLYINGS[u] };
+}
+
+async function getStratSpot() {
+  const u = getStratUnderlying();
+  // Try to get latest from already-loaded index futures data
+  try {
+    const res = await fetch('/api/fno/index-futures');
+    const data = await res.json();
+    const idx = (data.indices || []).find(i =>
+      (u.code === 'NIFTY' && i.id === 'NIFTY') ||
+      (u.code === 'BANKNIFTY' && i.id === 'BANKNIFTY') ||
+      (u.code === 'FINNIFTY' && i.id === 'FINNIFTY')
+    );
+    if (idx?.spotPrice) return idx.spotPrice;
+  } catch (_) {}
+  return u.spotFallback;
+}
+
+function onStratUnderlyingChange() {
+  // If a preset/legs are loaded, reload them at the new spot
+  if (stratLegs.length > 0) {
+    // Clear and let user re-pick
+    clearStrategy();
+  }
+}
+
+async function loadPreset(name) {
+  const u = getStratUnderlying();
+  stratSpot = await getStratSpot();
+  try {
+    const res = await fetch(`/api/fno/strategy-preset?name=${name}&spot=${stratSpot}&lotSize=${u.lotSize}`);
+    const data = await res.json();
+    if (data.error) {
+      document.getElementById('strat-results').innerHTML = '<div class="empty">Error: ' + data.error + '</div>';
+      return;
+    }
+    stratLegs = data.legs;
+    document.getElementById('strat-description').style.display = 'block';
+    document.getElementById('strat-description').innerHTML =
+      `<strong>${data.name}</strong> · <span style="color:var(--ink-3)">${data.sentiment}</span><br>${data.description}`;
+    document.getElementById('strat-controls').style.display = 'flex';
+    renderLegsEditor();
+    analyzeStrategy();
+  } catch (e) {
+    document.getElementById('strat-results').innerHTML = '<div class="empty">Failed: ' + e.message + '</div>';
+  }
+}
+
+function renderLegsEditor() {
+  const wrap = document.getElementById('strat-legs-wrap');
+  if (stratLegs.length === 0) {
+    wrap.innerHTML = '<div class="empty" style="padding:30px">No legs. Pick a preset or click + Add Leg.</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <div style="overflow-x:auto">
+    <table class="scanner-table" style="font-size:12px">
+      <thead>
+        <tr><th>#</th><th>Side</th><th>Type</th><th>Strike</th><th>Premium</th><th>Quantity</th><th></th></tr>
+      </thead>
+      <tbody>
+        ${stratLegs.map((leg, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>
+              <select onchange="updateLeg(${i}, 'side', this.value)" style="background:transparent;color:${leg.side === 'BUY' ? 'var(--buy)' : 'var(--sell)'};border:1px solid var(--line);padding:3px 6px;border-radius:3px;font-family:inherit;font-size:11px;font-weight:600">
+                <option value="BUY" ${leg.side === 'BUY' ? 'selected' : ''}>BUY</option>
+                <option value="SELL" ${leg.side === 'SELL' ? 'selected' : ''}>SELL</option>
+              </select>
+            </td>
+            <td>
+              <select onchange="updateLeg(${i}, 'type', this.value)" style="background:transparent;color:var(--ink);border:1px solid var(--line);padding:3px 6px;border-radius:3px;font-family:inherit;font-size:11px">
+                <option value="CE" ${leg.type === 'CE' ? 'selected' : ''}>CE</option>
+                <option value="PE" ${leg.type === 'PE' ? 'selected' : ''}>PE</option>
+              </select>
+            </td>
+            <td><input type="number" value="${leg.strike}" step="50" onchange="updateLeg(${i}, 'strike', parseFloat(this.value))" style="background:transparent;color:var(--ink);border:1px solid var(--line);padding:3px 6px;border-radius:3px;width:90px;font-family:inherit;font-size:11px"></td>
+            <td><input type="number" value="${leg.premium.toFixed(2)}" step="0.5" onchange="updateLeg(${i}, 'premium', parseFloat(this.value))" style="background:transparent;color:var(--ink);border:1px solid var(--line);padding:3px 6px;border-radius:3px;width:80px;font-family:inherit;font-size:11px"></td>
+            <td><input type="number" value="${leg.quantity}" step="${getStratUnderlying().lotSize}" onchange="updateLeg(${i}, 'quantity', parseInt(this.value))" style="background:transparent;color:var(--ink);border:1px solid var(--line);padding:3px 6px;border-radius:3px;width:70px;font-family:inherit;font-size:11px"></td>
+            <td><button class="btn" style="padding:3px 8px;font-size:11px" onclick="removeLeg(${i})">×</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    </div>
+  `;
+}
+
+function updateLeg(i, field, value) {
+  stratLegs[i][field] = value;
+  analyzeStrategy();
+}
+
+function addLeg() {
+  const u = getStratUnderlying();
+  const lastStrike = stratLegs.length > 0
+    ? stratLegs[stratLegs.length - 1].strike
+    : Math.round((stratSpot || u.spotFallback) / 50) * 50;
+  stratLegs.push({ type: 'CE', side: 'BUY', strike: lastStrike, premium: 100, quantity: u.lotSize });
+  document.getElementById('strat-controls').style.display = 'flex';
+  renderLegsEditor();
+  analyzeStrategy();
+}
+
+function removeLeg(i) {
+  stratLegs.splice(i, 1);
+  renderLegsEditor();
+  if (stratLegs.length > 0) analyzeStrategy();
+  else document.getElementById('strat-results').innerHTML = '';
+}
+
+function clearStrategy() {
+  stratLegs = [];
+  document.getElementById('strat-description').style.display = 'none';
+  document.getElementById('strat-controls').style.display = 'none';
+  document.getElementById('strat-results').innerHTML = '';
+  renderLegsEditor();
+}
+
+async function analyzeStrategy() {
+  if (stratLegs.length === 0) return;
+  if (!stratSpot) stratSpot = await getStratSpot();
+  try {
+    const res = await fetch('/api/fno/strategy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ legs: stratLegs, spot: stratSpot, rangePct: 0.15 }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      document.getElementById('strat-results').innerHTML = '<div class="empty">' + data.error + '</div>';
+      return;
+    }
+    renderStrategyResults(data);
+  } catch (e) {
+    document.getElementById('strat-results').innerHTML = '<div class="empty">Failed: ' + e.message + '</div>';
+  }
+}
+
+function renderStrategyResults(data) {
+  const fmtMoney = (n) => n == null ? '—' : (n >= 0 ? '+' : '') + '₹' + Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  const fmtMoneySigned = (n) => {
+    if (n == null) return 'UNLIMITED';
+    const sign = n >= 0 ? '+' : '−';
+    return sign + '₹' + Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  };
+  const colorPnl = (n) => n == null ? 'var(--accent)' : n > 0 ? 'var(--buy)' : n < 0 ? 'var(--sell)' : 'var(--ink-2)';
+
+  // Summary tiles
+  const summary = `
+    <div class="grid grid-12" style="margin-bottom:16px">
+      <div class="col-3">
+        <div class="cue">
+          <div class="cue-name">Net Cost</div>
+          <div class="cue-price" style="color:${data.netCost >= 0 ? 'var(--buy)' : 'var(--sell)'}">${fmtMoneySigned(data.netCost)}</div>
+          <div style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">${data.netCost >= 0 ? 'credit received' : 'debit paid'}</div>
+        </div>
+      </div>
+      <div class="col-3">
+        <div class="cue">
+          <div class="cue-name">Max Profit</div>
+          <div class="cue-price" style="color:${data.profitUnbounded ? 'var(--accent)' : 'var(--buy)'}">${data.profitUnbounded ? 'UNLIMITED' : fmtMoneySigned(data.maxProfit)}</div>
+          <div style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">${data.maxProfitAt && !data.profitUnbounded ? 'at ₹' + data.maxProfitAt.toFixed(0) : ''}</div>
+        </div>
+      </div>
+      <div class="col-3">
+        <div class="cue">
+          <div class="cue-name">Max Loss</div>
+          <div class="cue-price" style="color:${data.lossUnbounded ? 'var(--sell)' : 'var(--sell)'}">${data.lossUnbounded ? 'UNLIMITED' : fmtMoneySigned(data.maxLoss)}</div>
+          <div style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">${data.maxLossAt && !data.lossUnbounded ? 'at ₹' + data.maxLossAt.toFixed(0) : ''}</div>
+        </div>
+      </div>
+      <div class="col-3">
+        <div class="cue">
+          <div class="cue-name">Breakevens</div>
+          <div class="cue-price" style="font-size:18px">${data.breakevens.length === 0 ? 'NONE' : data.breakevens.map(b => '₹' + b.toFixed(0)).join(' · ')}</div>
+          <div style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">where P&amp;L = 0</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Payoff curve as inline SVG
+  const w = 800, h = 280, padL = 70, padR = 30, padT = 20, padB = 40;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+  const sLo = data.curve[0].S;
+  const sHi = data.curve[data.curve.length - 1].S;
+  const pnls = data.curve.map(p => p.pnl);
+  let pnlLo = Math.min(...pnls);
+  let pnlHi = Math.max(...pnls);
+  // Pad y range so the line doesn't kiss the edges
+  const pnlPad = (pnlHi - pnlLo) * 0.1;
+  pnlLo -= pnlPad; pnlHi += pnlPad;
+  const xScale = (S) => padL + ((S - sLo) / (sHi - sLo)) * innerW;
+  const yScale = (p) => padT + ((pnlHi - p) / (pnlHi - pnlLo)) * innerH;
+  const yZero = yScale(0);
+
+  // Build path: split into profit (green) and loss (red) segments by clipping at y=0
+  const pathD = data.curve.map((pt, i) => {
+    const cmd = i === 0 ? 'M' : 'L';
+    return `${cmd}${xScale(pt.S).toFixed(1)},${yScale(pt.pnl).toFixed(1)}`;
+  }).join(' ');
+
+  // Profit fill above zero, loss fill below — clipped via two paths
+  const profitFill = data.curve.map((pt, i) => {
+    const x = xScale(pt.S);
+    const y = yScale(Math.max(pt.pnl, 0));
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ') + ` L${xScale(sHi).toFixed(1)},${yZero.toFixed(1)} L${xScale(sLo).toFixed(1)},${yZero.toFixed(1)} Z`;
+
+  const lossFill = data.curve.map((pt, i) => {
+    const x = xScale(pt.S);
+    const y = yScale(Math.min(pt.pnl, 0));
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ') + ` L${xScale(sHi).toFixed(1)},${yZero.toFixed(1)} L${xScale(sLo).toFixed(1)},${yZero.toFixed(1)} Z`;
+
+  // Y-axis labels (5 ticks)
+  const yTicks = [];
+  for (let i = 0; i <= 4; i++) {
+    const v = pnlLo + (pnlHi - pnlLo) * (i / 4);
+    yTicks.push({ y: yScale(v), label: fmtMoneySigned(v) });
+  }
+  // X-axis labels (5 ticks)
+  const xTicks = [];
+  for (let i = 0; i <= 4; i++) {
+    const v = sLo + (sHi - sLo) * (i / 4);
+    xTicks.push({ x: xScale(v), label: '₹' + v.toFixed(0) });
+  }
+
+  // Spot line marker
+  const spotX = xScale(stratSpot);
+
+  // Breakeven markers
+  const beMarkers = data.breakevens.map(be => {
+    const x = xScale(be);
+    return `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + innerH}" stroke="var(--hold)" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="${x}" y="${padT + innerH + 28}" fill="var(--hold)" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="middle">BE ₹${be.toFixed(0)}</text>`;
+  }).join('');
+
+  const svg = `
+    <div class="card-title" style="margin-top:8px">P&amp;L at expiry · Underlying: ₹${stratSpot.toFixed(0)} · Range ±15%</div>
+    <div style="overflow-x:auto">
+    <svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;display:block;margin:0 auto" xmlns="http://www.w3.org/2000/svg">
+      <!-- Grid -->
+      ${yTicks.map(t => `<line x1="${padL}" y1="${t.y}" x2="${w - padR}" y2="${t.y}" stroke="var(--line)" stroke-width="0.5"/>`).join('')}
+      <!-- Zero line (bold) -->
+      <line x1="${padL}" y1="${yZero}" x2="${w - padR}" y2="${yZero}" stroke="var(--ink-3)" stroke-width="1"/>
+      <!-- Profit/loss fills -->
+      <path d="${profitFill}" fill="rgba(0,200,150,.15)" stroke="none"/>
+      <path d="${lossFill}" fill="rgba(255,77,109,.15)" stroke="none"/>
+      <!-- Main line -->
+      <path d="${pathD}" fill="none" stroke="var(--ink)" stroke-width="2"/>
+      <!-- Breakeven markers -->
+      ${beMarkers}
+      <!-- Current spot line -->
+      <line x1="${spotX}" y1="${padT}" x2="${spotX}" y2="${padT + innerH}" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="${spotX}" y="${padT - 4}" fill="var(--accent)" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="middle">SPOT ₹${stratSpot.toFixed(0)}</text>
+      <!-- Y-axis labels -->
+      ${yTicks.map(t => `<text x="${padL - 8}" y="${t.y + 3}" fill="var(--ink-3)" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="end">${t.label}</text>`).join('')}
+      <!-- X-axis labels -->
+      ${xTicks.map(t => `<text x="${t.x}" y="${padT + innerH + 14}" fill="var(--ink-3)" font-size="10" font-family="JetBrains Mono,monospace" text-anchor="middle">${t.label}</text>`).join('')}
+    </svg>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;text-align:center">
+      Green = profit · Red = loss · Blue line = current spot · Yellow dashed = breakevens · P&amp;L shown at expiry only
+    </div>
+  `;
+
+  document.getElementById('strat-results').innerHTML = summary + svg;
 }
 
 
