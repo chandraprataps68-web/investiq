@@ -15,6 +15,7 @@ const {
   INDICES, FNO_STOCKS,
   getIndexFutures, fetchOptionChain, analyzeOptionChain, getStockBuildup,
 } = require('./fno');
+const strategy = require('./strategy');
 const { NIFTY_50, NIFTY_NEXT_50, NIFTY_100, EXTENDED_UNIVERSE, toFyersEquity } = require('./universe');
 
 const app = express();
@@ -521,6 +522,47 @@ app.get('/api/option-chain/:symbol', requireAuth, async (req, res) => {
     const r = await fetchOptionChain(fyers, sym, 10);
     res.json(r);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Strategy P&L analyzer — pure math, no auth needed
+// POST /api/fno/strategy with body { legs: [...], spot, rangePct? }
+app.post('/api/fno/strategy', (req, res) => {
+  try {
+    const { legs, spot, rangePct } = req.body || {};
+    if (!Array.isArray(legs) || legs.length === 0) {
+      return res.status(400).json({ error: 'legs array required' });
+    }
+    if (typeof spot !== 'number' || spot <= 0) {
+      return res.status(400).json({ error: 'valid spot required' });
+    }
+    // Validate each leg
+    for (const leg of legs) {
+      if (!['CE', 'PE'].includes(leg.type)) return res.status(400).json({ error: 'leg.type must be CE or PE' });
+      if (!['BUY', 'SELL'].includes(leg.side)) return res.status(400).json({ error: 'leg.side must be BUY or SELL' });
+      if (typeof leg.strike !== 'number' || leg.strike <= 0) return res.status(400).json({ error: 'leg.strike invalid' });
+      if (typeof leg.premium !== 'number' || leg.premium < 0) return res.status(400).json({ error: 'leg.premium invalid' });
+      if (typeof leg.quantity !== 'number' || leg.quantity <= 0) return res.status(400).json({ error: 'leg.quantity invalid' });
+    }
+    const result = strategy.analyzeStrategy(legs, spot, rangePct || 0.15);
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Strategy preset builder — given preset name + spot + lotSize, return suggested legs
+app.get('/api/fno/strategy-preset', (req, res) => {
+  const name = req.query.name;
+  const spot = parseFloat(req.query.spot);
+  const lotSize = parseInt(req.query.lotSize || '75', 10);
+  if (!strategy.PRESETS[name]) return res.status(400).json({ error: 'unknown preset' });
+  if (!spot || spot <= 0) return res.status(400).json({ error: 'spot required' });
+  const preset = strategy.PRESETS[name];
+  const legs = preset.legs(spot, lotSize, null); // no chain lookup for now; uses estimates
+  res.json({
+    name: preset.name,
+    sentiment: preset.sentiment,
+    description: preset.description,
+    legs,
+  });
 });
 
 // ═══════════════════════════════════════════════════════════
