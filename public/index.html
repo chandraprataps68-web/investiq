@@ -1208,14 +1208,14 @@ function renderOptionChain(data) {
     <table class="scanner-table" style="font-size:11px">
       <thead>
         <tr>
-          <th colspan="5" style="text-align:center;background:rgba(0,200,150,.05)">CALLS</th>
+          <th colspan="6" style="text-align:center;background:rgba(0,200,150,.05)">CALLS</th>
           <th style="text-align:center">STRIKE</th>
-          <th colspan="5" style="text-align:center;background:rgba(255,77,109,.05)">PUTS</th>
+          <th colspan="6" style="text-align:center;background:rgba(255,77,109,.05)">PUTS</th>
         </tr>
         <tr>
-          <th>OI</th><th>OI Δ</th><th>Vol</th><th>IV</th><th>LTP</th>
+          <th>OI</th><th>OI Δ</th><th>Vol</th><th>IV</th><th>Δ</th><th>LTP</th>
           <th></th>
-          <th>LTP</th><th>IV</th><th>Vol</th><th>OI Δ</th><th>OI</th>
+          <th>LTP</th><th>Δ</th><th>IV</th><th>Vol</th><th>OI Δ</th><th>OI</th>
         </tr>
       </thead>
       <tbody>
@@ -1235,9 +1235,11 @@ function renderOptionChain(data) {
               <td style="${ceBg}" class="${offHrs ? '' : fmt.cls(r.ce?.oich)}">${ceOiD}</td>
               <td style="${ceBg}">${ocFmt(r.ce?.volume, 'k')}</td>
               <td style="${ceBg}">${r.ce?.iv != null ? r.ce.iv.toFixed(1) : '—'}</td>
+              <td style="${ceBg}">${r.ce?.delta != null ? r.ce.delta.toFixed(2) : '—'}</td>
               <td style="${ceBg}" class="up">${r.ce?.ltp != null ? r.ce.ltp.toFixed(2) : '—'}</td>
               <td style="${strikeStyle};text-align:center">${r.strike}</td>
               <td style="${peBg}" class="down">${r.pe?.ltp != null ? r.pe.ltp.toFixed(2) : '—'}</td>
+              <td style="${peBg}">${r.pe?.delta != null ? r.pe.delta.toFixed(2) : '—'}</td>
               <td style="${peBg}">${r.pe?.iv != null ? r.pe.iv.toFixed(1) : '—'}</td>
               <td style="${peBg}">${ocFmt(r.pe?.volume, 'k')}</td>
               <td style="${peBg}" class="${offHrs ? '' : fmt.cls(r.pe?.oich)}">${peOiD}</td>
@@ -1249,7 +1251,7 @@ function renderOptionChain(data) {
     </table>
     </div>
     <div style="margin-top:8px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">
-      Pink rows = highest CE OI (resistance) · Green rows = highest PE OI (support) · Blue strike = ATM${data.marketClosed ? ' · OI Δ populates during market hours' : ''}
+      Pink rows = highest CE OI (resistance) · Green rows = highest PE OI (support) · Blue strike = ATM · IV computed via Black-Scholes (r=6.5%)${data.marketClosed ? ' · OI Δ populates during market hours' : ''}
     </div>
   `;
 
