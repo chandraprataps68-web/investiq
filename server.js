@@ -184,40 +184,60 @@ async function getHistoryShortKey(fyersSym, resolution = 'D', days = 365) {
   const cached = cacheGet(ck);
   if (cached) return cached;
   const fyers = getFyers();
-  const to = Math.floor(Date.now() / 1000);
-  const from = to - days * 86400;
-  const r = await fyers.getHistory({
-    symbol: fyersSym,
-    resolution,
-    date_format: 0,
-    range_from: String(from),
-    range_to: String(to),
-    cont_flag: '1',
-  });
-  // Fyers returns { s: 'ok', candles: [...] } on success
-  // and { s: 'error', message: '...', code: -... } on failure.
-  // Don't silently swallow errors — they cause the scanner to return 0 results.
-  if (r?.s !== 'ok') {
-    const msg = r?.message || r?.s || 'unknown';
-    const code = r?.code;
-    console.error(`[fyers history ${fyersSym}] ${msg} (code ${code})`);
-    // Auth errors: codes -16 (token expired), -17 (invalid token), -300/-352 (auth)
-    // Clear token so /api/auth/status reflects reality
-    if (code === -16 || code === -17 || code === -300 || code === -352 ||
-        /token|auth|expired|unauthor/i.test(String(msg))) {
-      console.error('[fyers] Token appears invalid, clearing');
-      accessToken = '';
-      tokenTime = 0;
-      try { fs.unlinkSync(TOKEN_FILE); } catch (_) {}
+
+  // CRITICAL: Fyers daily history has a 366-day max per request.
+  // For longer ranges, we chunk and concatenate. For ≤365 days, single call.
+  const MAX_DAYS_PER_REQUEST = resolution === 'D' ? 365 : 30;
+  const allCandles = [];
+  const nowSec = Math.floor(Date.now() / 1000);
+  const totalSec = days * 86400;
+
+  // Build chunked ranges from oldest to newest
+  let chunkEnd = nowSec;
+  let chunkStart = Math.max(nowSec - totalSec, nowSec - MAX_DAYS_PER_REQUEST * 86400);
+
+  while (chunkEnd > nowSec - totalSec) {
+    const r = await fyers.getHistory({
+      symbol: fyersSym,
+      resolution,
+      date_format: 0,
+      range_from: String(chunkStart),
+      range_to: String(chunkEnd),
+      cont_flag: '1',
+    });
+    if (r?.s !== 'ok') {
+      const msg = r?.message || r?.s || 'unknown';
+      const code = r?.code;
+      console.error(`[fyers history ${fyersSym} chunk] ${msg} (code ${code})`);
+      // Only auto-clear token on confirmed auth errors
+      if (code === -16 || code === -17 || code === -300 || code === -352) {
+        console.error('[fyers] Token invalid, clearing');
+        accessToken = '';
+        tokenTime = 0;
+        try { fs.unlinkSync(TOKEN_FILE); } catch (_) {}
+      }
+      // Cache empty briefly so we don't hammer Fyers retrying
+      cacheSet(ck, [], 5 * 60 * 1000);
+      return [];
     }
-    // Cache empty result briefly so we don't hammer Fyers retrying bad symbols
-    cacheSet(ck, [], 5 * 60 * 1000);
-    return [];
+    const chunk = (r.candles || []).map((c) => ({
+      t: c[0], o: c[1], h: c[2], l: c[3], c: c[4], v: c[5],
+    }));
+    // Prepend (older data goes first)
+    allCandles.unshift(...chunk);
+    if (chunkStart <= nowSec - totalSec) break;
+    chunkEnd = chunkStart - 86400;
+    chunkStart = Math.max(nowSec - totalSec, chunkEnd - MAX_DAYS_PER_REQUEST * 86400);
   }
-  // Internal canonical: short keys (t,o,h,l,c,v) — used by ta.js & scanner.js
-  const candles = (r.candles || []).map((c) => ({
-    t: c[0], o: c[1], h: c[2], l: c[3], c: c[4], v: c[5],
-  }));
+
+  // De-dupe by timestamp (chunks may overlap by a day at boundaries)
+  const seen = new Set();
+  const candles = allCandles.filter((c) => {
+    if (seen.has(c.t)) return false;
+    seen.add(c.t);
+    return true;
+  });
+
   cacheSet(ck, candles, isMarketHours() ? 10 * 60 * 1000 : 60 * 60 * 1000);
   return candles;
 }
