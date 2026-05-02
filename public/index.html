@@ -355,7 +355,7 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   <button class="tab" data-tab="scanner"><span class="tab-num">02</span>Scanner</button>
   <button class="tab" data-tab="search"><span class="tab-num">03</span>Stock Search</button>
   <button class="tab" data-tab="commodities"><span class="tab-num">04</span>Commodities</button>
-  <button class="tab" data-tab="options"><span class="tab-num">05</span>Options</button>
+  <button class="tab" data-tab="fno"><span class="tab-num">05</span>F&amp;O</button>
 </nav>
 
 <main>
@@ -453,17 +453,63 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   </div>
 </section>
 
-<!-- ============ OPTIONS ============ -->
-<section class="panel" id="panel-options">
+<!-- ============ F&O ============ -->
+<section class="panel" id="panel-fno">
   <div class="panel-header">
-    <h2 class="panel-title">Options</h2>
-    <span class="panel-sub">PCR, OI buildup, Max Pain — coming next iteration</span>
-  </div>
-  <div class="card">
-    <div class="empty">
-      Options scanner is staged for next phase.<br>
-      Will surface PCR, OI buildup quadrants, Max Pain, IV skew for Nifty / Bank Nifty / F&amp;O stocks.
+    <h2 class="panel-title">Futures &amp; Options</h2>
+    <span class="panel-sub">Index futures · Option chain · Stock OI buildup</span>
+    <div class="panel-actions">
+      <button class="btn" onclick="loadFno(true)">↻ Refresh</button>
     </div>
+  </div>
+
+  <!-- Section A: Index Futures -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Index Futures · Spot · Basis · Rollover</div>
+    <div class="grid grid-12" id="fno-idx-grid">
+      <div class="loading col-12"><span class="spinner"></span>Loading futures...</div>
+    </div>
+  </div>
+
+  <!-- Section B: Option Chain -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Option Chain</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <select id="oc-symbol" class="btn" style="min-width:160px;padding:8px 10px">
+        <option value="NIFTY">Nifty 50</option>
+        <option value="BANKNIFTY">Bank Nifty</option>
+        <option value="FINNIFTY">Fin Nifty</option>
+        <option value="MIDCAP">Midcap Nifty</option>
+        <option value="RELIANCE">RELIANCE</option>
+        <option value="HDFCBANK">HDFCBANK</option>
+        <option value="ICICIBANK">ICICIBANK</option>
+        <option value="INFY">INFY</option>
+        <option value="TCS">TCS</option>
+        <option value="SBIN">SBIN</option>
+        <option value="BAJFINANCE">BAJFINANCE</option>
+        <option value="LT">LT</option>
+        <option value="ITC">ITC</option>
+        <option value="ADANIENT">ADANIENT</option>
+        <option value="TATAMOTORS">TATAMOTORS</option>
+      </select>
+      <select id="oc-strikes" class="btn" style="padding:8px 10px">
+        <option value="10">10 strikes</option>
+        <option value="20" selected>20 strikes</option>
+        <option value="30">30 strikes</option>
+      </select>
+      <button class="btn btn-primary" onclick="loadOptionChain()">Load Chain</button>
+      <span id="oc-ts" style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace"></span>
+    </div>
+
+    <div id="oc-summary" class="grid grid-12" style="margin-bottom:14px"></div>
+    <div id="oc-table-wrap"><div class="empty">Pick a symbol and click Load Chain.</div></div>
+  </div>
+
+  <!-- Section C: Stock OI Buildup -->
+  <div class="card">
+    <div class="card-title">Stock F&amp;O Buildup · Long/Short · Covering/Unwinding</div>
+    <div id="buildup-summary" style="margin-bottom:14px"></div>
+    <div id="buildup-table"><div class="loading"><span class="spinner"></span>Loading buildup...</div></div>
   </div>
 </section>
 
@@ -480,6 +526,7 @@ document.querySelectorAll('.tab').forEach(t => {
     document.getElementById('panel-' + tab).classList.add('active');
     if (tab === 'commodities' && !window.__commLoaded) loadCommodities();
     if (tab === 'scanner' && !window.__scanLoaded) loadScanner('nifty100');
+    if (tab === 'fno' && !window.__fnoLoaded) loadFno();
   });
 });
 
@@ -982,7 +1029,300 @@ function drawSparkline(canvas, points) {
   ctx.stroke();
 }
 
-// ============ Init ============
+// ============ F&O ============
+async function loadFno(force) {
+  window.__fnoLoaded = true;
+  await Promise.all([loadIndexFutures(force), loadBuildup(force)]);
+}
+
+async function loadIndexFutures(force) {
+  const div = document.getElementById('fno-idx-grid');
+  try {
+    const url = '/api/fno/index-futures' + (force ? '?t=' + Date.now() : '');
+    const res = await fetch(url);
+    const data = await res.json();
+    if (res.status === 401 || data.error === 'auth_required') {
+      div.innerHTML = '<div class="col-12 empty">Reconnect Fyers to load F&amp;O.</div>'; return;
+    }
+    if (data.error) { div.innerHTML = '<div class="col-12 empty">Error: ' + data.error + '</div>'; return; }
+    div.innerHTML = (data.indices || []).map(idx => {
+      const basisColor = idx.basis > 0 ? 'up' : idx.basis < 0 ? 'down' : 'flat';
+      const basisLabel = idx.basis > 0 ? 'Premium' : idx.basis < 0 ? 'Discount' : 'Flat';
+      return `
+        <div class="col-3">
+          <div class="cue" style="padding:14px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <div class="cue-name">${idx.name}</div>
+              <div style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">Lot ${idx.lotSize}</div>
+            </div>
+            <div class="cue-price" style="font-size:20px">${fmt.num(idx.spotPrice, 2)}</div>
+            <div style="font-size:11px;color:var(--ink-3);margin-top:2px">SPOT · ${fmt.pct(idx.spotChangePct)}</div>
+
+            <div style="display:flex;gap:12px;margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:11px">
+              <div style="flex:1">
+                <div style="color:var(--ink-3)">CURR FUT</div>
+                <div style="font-size:13px;font-weight:600">${fmt.num(idx.currPrice, 2)}</div>
+                <div class="${fmt.cls(idx.currChangePct)}">${fmt.pct(idx.currChangePct)}</div>
+              </div>
+              <div style="flex:1">
+                <div style="color:var(--ink-3)">NEXT FUT</div>
+                <div style="font-size:13px;font-weight:600">${fmt.num(idx.nextPrice, 2)}</div>
+                <div class="${fmt.cls(idx.nextChangePct)}">${fmt.pct(idx.nextChangePct)}</div>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:12px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:11px">
+              <div style="flex:1">
+                <div style="color:var(--ink-3)">${basisLabel.toUpperCase()}</div>
+                <div class="${basisColor}" style="font-size:13px;font-weight:600">${idx.basis != null ? (idx.basis > 0 ? '+' : '') + idx.basis.toFixed(2) : '—'}</div>
+                <div class="${basisColor}">${fmt.pct(idx.basisPct, 3)}</div>
+              </div>
+              <div style="flex:1">
+                <div style="color:var(--ink-3)">ROLLOVER</div>
+                <div style="font-size:13px;font-weight:600">${idx.rollover != null ? idx.rollover.toFixed(0) + '%' : '—'}</div>
+                <div style="color:var(--ink-3)">to next mo</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    div.innerHTML = '<div class="col-12 empty">Failed: ' + e.message + '</div>';
+  }
+}
+
+async function loadOptionChain() {
+  const sym = document.getElementById('oc-symbol').value;
+  const strikes = document.getElementById('oc-strikes').value;
+  const wrap = document.getElementById('oc-table-wrap');
+  const summary = document.getElementById('oc-summary');
+  wrap.innerHTML = '<div class="loading"><span class="spinner"></span>Loading option chain for ' + sym + '...</div>';
+  summary.innerHTML = '';
+  try {
+    const res = await fetch('/api/fno/option-chain?symbol=' + encodeURIComponent(sym) + '&strikes=' + strikes);
+    const data = await res.json();
+    if (res.status === 401) { wrap.innerHTML = '<div class="empty">Reconnect Fyers.</div>'; return; }
+    if (data.error) { wrap.innerHTML = '<div class="empty">Error: ' + data.error + '</div>'; return; }
+    renderOptionChain(data);
+  } catch (e) {
+    wrap.innerHTML = '<div class="empty">Failed: ' + e.message + '</div>';
+  }
+}
+
+function renderOptionChain(data) {
+  // Summary tiles
+  const summaryEl = document.getElementById('oc-summary');
+  const pcrOI = data.pcr?.pcrOI;
+  const pcrSentiment = pcrOI > 1.3 ? 'BULLISH' : pcrOI < 0.7 ? 'BEARISH' : 'NEUTRAL';
+  const pcrColor = pcrOI > 1.3 ? 'var(--buy)' : pcrOI < 0.7 ? 'var(--sell)' : 'var(--hold)';
+
+  summaryEl.innerHTML = `
+    <div class="col-3">
+      <div class="cue">
+        <div class="cue-name">PCR (OI)</div>
+        <div class="cue-price" style="color:${pcrColor}">${pcrOI != null ? pcrOI.toFixed(2) : '—'}</div>
+        <div style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">${pcrSentiment}</div>
+      </div>
+    </div>
+    <div class="col-3">
+      <div class="cue">
+        <div class="cue-name">PCR (Volume)</div>
+        <div class="cue-price">${data.pcr?.pcrVolume != null ? data.pcr.pcrVolume.toFixed(2) : '—'}</div>
+      </div>
+    </div>
+    <div class="col-3">
+      <div class="cue">
+        <div class="cue-name">Max Pain</div>
+        <div class="cue-price" style="color:var(--hold)">${data.maxPain ? fmt.num(data.maxPain.strike, 0) : '—'}</div>
+        <div style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">expiry magnet</div>
+      </div>
+    </div>
+    <div class="col-3">
+      <div class="cue">
+        <div class="cue-name">OI Walls</div>
+        <div style="display:flex;gap:10px;font-family:'JetBrains Mono',monospace;font-size:13px;margin-top:4px">
+          <div><span style="color:var(--sell)">R</span> ${data.oiWalls?.resistance ? fmt.num(data.oiWalls.resistance.strike, 0) : '—'}</div>
+          <div><span style="color:var(--buy)">S</span> ${data.oiWalls?.support ? fmt.num(data.oiWalls.support.strike, 0) : '—'}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Table: pivot chain by strike, render side-by-side
+  const byStrike = {};
+  (data.chain || []).forEach(opt => {
+    const k = opt.strike_price;
+    if (k == null) return; // skip the underlying row Fyers includes
+    if (!byStrike[k]) byStrike[k] = { strike: k };
+    if (opt.option_type === 'CE') byStrike[k].ce = opt;
+    if (opt.option_type === 'PE') byStrike[k].pe = opt;
+  });
+  const rows = Object.values(byStrike).filter(r => r.ce || r.pe).sort((a, b) => a.strike - b.strike);
+
+  // Find ATM strike (closest to spot — we approximate as strike where CE LTP ≈ PE LTP, or middle of chain)
+  const atmStrike = (() => {
+    let best = null, bestDiff = Infinity;
+    for (const r of rows) {
+      if (r.ce?.ltp && r.pe?.ltp) {
+        const diff = Math.abs(r.ce.ltp - r.pe.ltp);
+        if (diff < bestDiff) { bestDiff = diff; best = r.strike; }
+      }
+    }
+    return best;
+  })();
+
+  const maxCallOI = Math.max(...rows.map(r => r.ce?.oi || 0));
+  const maxPutOI = Math.max(...rows.map(r => r.pe?.oi || 0));
+
+  document.getElementById('oc-table-wrap').innerHTML = `
+    <div style="overflow-x:auto">
+    <table class="scanner-table" style="font-size:11px">
+      <thead>
+        <tr>
+          <th colspan="5" style="text-align:center;background:rgba(0,200,150,.05)">CALLS</th>
+          <th style="text-align:center">STRIKE</th>
+          <th colspan="5" style="text-align:center;background:rgba(255,77,109,.05)">PUTS</th>
+        </tr>
+        <tr>
+          <th>OI</th><th>OI Δ</th><th>Vol</th><th>IV</th><th>LTP</th>
+          <th></th>
+          <th>LTP</th><th>IV</th><th>Vol</th><th>OI Δ</th><th>OI</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => {
+          const isATM = r.strike === atmStrike;
+          const isResistance = r.ce?.oi === maxCallOI && maxCallOI > 0;
+          const isSupport = r.pe?.oi === maxPutOI && maxPutOI > 0;
+          const ceBg = isResistance ? 'background:rgba(255,77,109,.10)' : '';
+          const peBg = isSupport ? 'background:rgba(0,200,150,.10)' : '';
+          const strikeStyle = isATM ? 'background:rgba(74,158,255,.15);font-weight:700;color:var(--accent)' : 'font-weight:600';
+          return `
+            <tr>
+              <td style="${ceBg}">${ocFmt(r.ce?.oi, 'k')}</td>
+              <td style="${ceBg}" class="${fmt.cls(r.ce?.oich)}">${ocFmt(r.ce?.oich, 'k', true)}</td>
+              <td style="${ceBg}">${ocFmt(r.ce?.volume, 'k')}</td>
+              <td style="${ceBg}">${r.ce?.iv != null ? r.ce.iv.toFixed(1) : '—'}</td>
+              <td style="${ceBg}" class="up">${r.ce?.ltp != null ? r.ce.ltp.toFixed(2) : '—'}</td>
+              <td style="${strikeStyle};text-align:center">${r.strike}</td>
+              <td style="${peBg}" class="down">${r.pe?.ltp != null ? r.pe.ltp.toFixed(2) : '—'}</td>
+              <td style="${peBg}">${r.pe?.iv != null ? r.pe.iv.toFixed(1) : '—'}</td>
+              <td style="${peBg}">${ocFmt(r.pe?.volume, 'k')}</td>
+              <td style="${peBg}" class="${fmt.cls(r.pe?.oich)}">${ocFmt(r.pe?.oich, 'k', true)}</td>
+              <td style="${peBg}">${ocFmt(r.pe?.oi, 'k')}</td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">
+      Pink rows = highest CE OI (resistance) · Green rows = highest PE OI (support) · Blue strike = ATM
+    </div>
+  `;
+
+  document.getElementById('oc-ts').textContent =
+    'Updated ' + new Date(data.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })
+    + (data.fromCache ? ' (cached)' : '');
+}
+
+function ocFmt(n, suffix, signed) {
+  if (n == null || isNaN(n)) return '—';
+  const sign = signed && n > 0 ? '+' : '';
+  if (suffix === 'k') {
+    if (Math.abs(n) >= 1e7) return sign + (n / 1e7).toFixed(1) + 'Cr';
+    if (Math.abs(n) >= 1e5) return sign + (n / 1e5).toFixed(1) + 'L';
+    if (Math.abs(n) >= 1e3) return sign + (n / 1e3).toFixed(1) + 'K';
+    return sign + n.toFixed(0);
+  }
+  return sign + n.toFixed(2);
+}
+
+async function loadBuildup(force) {
+  const div = document.getElementById('buildup-table');
+  const sumDiv = document.getElementById('buildup-summary');
+  div.innerHTML = '<div class="loading"><span class="spinner"></span>Computing OI buildup across ' + (window.__fnoStockCount || 60) + ' F&amp;O stocks...</div>';
+  try {
+    const url = '/api/fno/buildup' + (force ? '?t=' + Date.now() : '');
+    const res = await fetch(url);
+    const data = await res.json();
+    if (res.status === 401) { div.innerHTML = '<div class="empty">Reconnect Fyers.</div>'; return; }
+    if (data.error) { div.innerHTML = '<div class="empty">Error: ' + data.error + '</div>'; return; }
+
+    const s = data.summary || {};
+    sumDiv.innerHTML = `
+      <div class="grid grid-12">
+        <div class="cue col-3" style="border-color:var(--buy)">
+          <div class="cue-name">Long Buildup</div>
+          <div class="cue-price up">${s['LONG BUILDUP'] || 0}</div>
+          <div style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">price↑ OI↑ · bullish</div>
+        </div>
+        <div class="cue col-3" style="border-color:rgba(0,200,150,.4)">
+          <div class="cue-name">Short Covering</div>
+          <div class="cue-price up">${s['SHORT COVERING'] || 0}</div>
+          <div style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">price↑ OI↓ · bullish</div>
+        </div>
+        <div class="cue col-3" style="border-color:rgba(255,77,109,.4)">
+          <div class="cue-name">Long Unwinding</div>
+          <div class="cue-price down">${s['LONG UNWINDING'] || 0}</div>
+          <div style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">price↓ OI↓ · bearish</div>
+        </div>
+        <div class="cue col-3" style="border-color:var(--sell)">
+          <div class="cue-name">Short Buildup</div>
+          <div class="cue-price down">${s['SHORT BUILDUP'] || 0}</div>
+          <div style="font-size:10px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">price↓ OI↑ · bearish</div>
+        </div>
+      </div>
+    `;
+
+    // Sort: by buildup category (most actionable first), then by absolute OI change
+    const order = { 'LONG BUILDUP': 1, 'SHORT BUILDUP': 2, 'SHORT COVERING': 3, 'LONG UNWINDING': 4, 'NEUTRAL': 5, 'N/A': 6 };
+    const rows = [...(data.stocks || [])].sort((a, b) => {
+      const oa = order[a.buildup] || 9, ob = order[b.buildup] || 9;
+      if (oa !== ob) return oa - ob;
+      return Math.abs(b.oiChangePct || 0) - Math.abs(a.oiChangePct || 0);
+    });
+
+    div.innerHTML = `
+      <table class="scanner-table">
+        <thead>
+          <tr>
+            <th>Symbol</th><th>Buildup</th><th>Price</th><th>Δ Price</th><th>OI</th><th>Δ OI</th><th>Volume</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr onclick="document.getElementById('oc-symbol').value='${r.symbol}'; loadOptionChain(); document.getElementById('oc-table-wrap').scrollIntoView({behavior:'smooth'});">
+              <td class="symbol">${r.symbol}</td>
+              <td><span class="signal-pill ${buildupCls(r.buildup)}">${r.buildup}</span></td>
+              <td>${fmt.money(r.price)}</td>
+              <td class="${fmt.cls(r.priceChangePct)}">${fmt.pct(r.priceChangePct)}</td>
+              <td>${ocFmt(r.oi, 'k')}</td>
+              <td class="${fmt.cls(r.oiChangePct)}">${fmt.pct(r.oiChangePct)}</td>
+              <td>${ocFmt(r.volume, 'k')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:8px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">
+        Click any row to load that stock's option chain above. ${data.stocks?.length || 0} F&amp;O stocks scanned.
+      </div>
+    `;
+  } catch (e) {
+    div.innerHTML = '<div class="empty">Failed: ' + e.message + '</div>';
+  }
+}
+
+function buildupCls(b) {
+  if (b === 'LONG BUILDUP') return 'STRONG.BUY';
+  if (b === 'SHORT COVERING') return 'BUY';
+  if (b === 'SHORT BUILDUP') return 'STRONG.SELL';
+  if (b === 'LONG UNWINDING') return 'SELL';
+  return 'HOLD';
+}
+
+
 checkAuth();
 updateMarketClock();
 setInterval(checkAuth, 60_000);
