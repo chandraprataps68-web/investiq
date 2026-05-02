@@ -863,24 +863,49 @@ function renderTargets(targets) {
 
 async function renderChart(data) {
   const el = document.getElementById('chart');
+  if (!el) return;
   el.innerHTML = '';
-  const candles = await fetch('/api/history/' + encodeURIComponent(data.symbol) + '?days=180').then(r => r.json());
-  if (chart) chart.remove();
-  chart = LightweightCharts.createChart(el, {
-    layout: { background: { color: 'transparent' }, textColor: '#a0a8b5' },
-    grid: { vertLines: { color: '#1a1f28' }, horzLines: { color: '#1a1f28' } },
-    timeScale: { borderColor: '#232a35' },
-    rightPriceScale: { borderColor: '#232a35' },
-    width: el.clientWidth, height: 400,
-  });
-  candleSeries = chart.addCandlestickSeries({
-    upColor: '#00c896', downColor: '#ff4d6d',
-    borderUpColor: '#00c896', borderDownColor: '#ff4d6d',
-    wickUpColor: '#00c896', wickDownColor: '#ff4d6d',
-  });
-  candleSeries.setData((candles.candles || []).map(c => ({
-    time: c.t, open: c.o, high: c.h, low: c.l, close: c.c,
-  })));
+  try {
+    const res = await fetch('/api/history/' + encodeURIComponent(data.symbol) + '?days=180');
+    const payload = await res.json();
+    const raw = payload.candles || [];
+    if (!raw.length) {
+      el.innerHTML = '<div class="empty" style="padding:40px">No chart data available.</div>';
+      return;
+    }
+    if (chart) { try { chart.remove(); } catch(_){} }
+    chart = LightweightCharts.createChart(el, {
+      layout: { background: { color: 'transparent' }, textColor: '#a0a8b5' },
+      grid: { vertLines: { color: '#1a1f28' }, horzLines: { color: '#1a1f28' } },
+      timeScale: { borderColor: '#232a35', timeVisible: false, secondsVisible: false },
+      rightPriceScale: { borderColor: '#232a35' },
+      width: el.clientWidth, height: 400,
+    });
+    candleSeries = chart.addCandlestickSeries({
+      upColor: '#00c896', downColor: '#ff4d6d',
+      borderUpColor: '#00c896', borderDownColor: '#ff4d6d',
+      wickUpColor: '#00c896', wickDownColor: '#ff4d6d',
+    });
+    // Server returns long keys: { time, open, high, low, close, volume }
+    // Accept both shapes defensively
+    const candleData = raw.map(c => ({
+      time: c.time ?? c.t,
+      open: c.open ?? c.o,
+      high: c.high ?? c.h,
+      low: c.low ?? c.l,
+      close: c.close ?? c.c,
+    })).filter(c => c.time && c.close != null);
+    candleSeries.setData(candleData);
+    chart.timeScale().fitContent();
+
+    // Resize on window
+    const resize = () => {
+      if (chart && el.clientWidth) chart.applyOptions({ width: el.clientWidth });
+    };
+    window.addEventListener('resize', resize, { once: false });
+  } catch (e) {
+    el.innerHTML = '<div class="empty" style="padding:40px">Chart error: ' + e.message + '</div>';
+  }
 }
 
 // ============ Commodities ============
