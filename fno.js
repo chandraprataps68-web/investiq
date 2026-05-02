@@ -127,14 +127,15 @@ async function resolveNextMonthFuture(futBase, currSym, fetchQuoteFn) {
 // fyers: a fyersModel instance
 // symbol: 'NSE:NIFTY50-INDEX' or 'NSE:RELIANCE-EQ' etc.
 // strikeCount: number of strikes ABOVE+BELOW spot (Fyers returns 2x this)
-async function fetchOptionChain(fyers, symbol, strikeCount = 20) {
+// expiryTimestamp: optional epoch-seconds string for specific expiry (omit = nearest)
+async function fetchOptionChain(fyers, symbol, strikeCount = 20, expiryTimestamp = '') {
   if (typeof fyers.getOptionChain !== 'function') {
     return { error: 'getOptionChain not available in this SDK build' };
   }
   const r = await fyers.getOptionChain({
     symbol,
     strikecount: strikeCount,
-    timestamp: '',
+    timestamp: expiryTimestamp || '',
   });
   if (r?.s !== 'ok' || !r?.data) {
     return { error: r?.message || 'option chain fetch failed', raw: r };
@@ -216,18 +217,49 @@ function findOIWalls(optionsChain) {
 
 // Combine all option chain analytics into one analysis object
 function analyzeOptionChain(rawData) {
-  const chain = rawData.optionsChain || [];
-  if (!chain.length) return { error: 'empty chain' };
+  const fullChain = rawData.optionsChain || [];
+  if (!fullChain.length) return { error: 'empty chain' };
+
+  // Fyers includes the underlying as a row with strike_price: -1 and option_type: ""
+  // It carries spot LTP + change AND futures price (fp) + change
+  const underlyingRow = fullChain.find((o) => o.strike_price === -1 || o.strike_price == null);
+  const spot = underlyingRow?.ltp ?? null;
+  const spotChange = underlyingRow?.ltpch ?? null;
+  const spotChangePct = underlyingRow?.ltpchp ?? null;
+  const futuresPrice = underlyingRow?.fp ?? null;
+  const futuresChangePct = underlyingRow?.fpchp ?? null;
+
+  // Strike rows only (exclude the underlying)
+  const chain = fullChain.filter((o) => o.strike_price > 0 && (o.option_type === 'CE' || o.option_type === 'PE'));
+
+  // India VIX: response field is `indiavixData` (no period). It's an object {ltp, ...} or sometimes a number.
+  let indiaVix = null;
+  if (rawData.indiavixData != null) {
+    indiaVix = typeof rawData.indiavixData === 'number'
+      ? rawData.indiavixData
+      : (rawData.indiavixData.ltp ?? rawData.indiavixData.value ?? null);
+  }
+
+  // Detect if Fyers is returning all-zero OI changes (= market closed / pre-open)
+  const sampleSize = Math.min(20, chain.length);
+  const sample = chain.slice(0, sampleSize);
+  const allZeroOiChanges = sample.length > 0 && sample.every((o) => (o.oich ?? 0) === 0);
+
   return {
-    spot: rawData.optionsChain.find((o) => o.option_type === undefined || o.strike_price == null)?.ltp ?? null,
+    spot,
+    spotChange,
+    spotChangePct,
+    futuresPrice,
+    futuresChangePct,
     callOI: rawData.callOi ?? null,
     putOI: rawData.putOi ?? null,
-    indiaVix: rawData.indiavixData?.ltp ?? rawData.indiavixData ?? null,
+    indiaVix,
     expiries: rawData.expiryData || [],
     pcr: computePCR(chain),
     maxPain: computeMaxPain(chain),
     oiWalls: findOIWalls(chain),
-    chain, // raw strike data for table rendering
+    chain, // strike rows only
+    marketClosed: allZeroOiChanges,
   };
 }
 

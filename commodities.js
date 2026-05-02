@@ -68,7 +68,7 @@ async function resolveContract(base, exchange, fetchQuoteFn) {
   return null;
 }
 
-// Fetch crypto prices in INR via CoinGecko
+// Fetch crypto prices in INR via CoinGecko, with Binance USD fallback
 async function fetchCrypto() {
   const ids = CRYPTO.map((c) => c.id).join(',');
   const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=inr,usd&include_24hr_change=true&include_24hr_vol=true`;
@@ -76,6 +76,9 @@ async function fetchCrypto() {
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status}`);
     const data = await res.json();
+    // Sanity-check: at least one coin should have a price
+    const hasData = CRYPTO.some((c) => data[c.id]?.inr || data[c.id]?.usd);
+    if (!hasData) throw new Error('CoinGecko returned no usable data');
     return CRYPTO.map((c) => {
       const d = data[c.id];
       if (!d) return { ...c, error: 'no data' };
@@ -85,6 +88,46 @@ async function fetchCrypto() {
         priceUsd: d.usd,
         change24h: d.inr_24h_change,
         volume24h: d.inr_24h_vol,
+        source: 'coingecko',
+      };
+    });
+  } catch (err) {
+    console.warn('[crypto] CoinGecko failed, trying Binance fallback:', err.message);
+    return fetchCryptoBinanceFallback();
+  }
+}
+
+// Binance fallback — USD prices only, converted to INR via approximate rate.
+// Less rich than CoinGecko but never rate-limits and works from any IP.
+async function fetchCryptoBinanceFallback() {
+  // Binance ticker symbols
+  const map = {
+    bitcoin: 'BTCUSDT',
+    ethereum: 'ETHUSDT',
+    solana: 'SOLUSDT',
+    binancecoin: 'BNBUSDT',
+  };
+  // USD/INR fallback rate (approximate; only used if real rate unavailable)
+  const USD_INR = 84.5;
+  try {
+    const symbols = JSON.stringify(Object.values(map));
+    const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(symbols)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error(`Binance HTTP ${res.status}`);
+    const arr = await res.json();
+    const bySym = {};
+    for (const t of arr) bySym[t.symbol] = t;
+    return CRYPTO.map((c) => {
+      const t = bySym[map[c.id]];
+      if (!t) return { ...c, error: 'no data' };
+      const usd = parseFloat(t.lastPrice);
+      return {
+        ...c,
+        priceInr: usd * USD_INR,
+        priceUsd: usd,
+        change24h: parseFloat(t.priceChangePercent),
+        volume24h: parseFloat(t.quoteVolume) * USD_INR,
+        source: 'binance',
       };
     });
   } catch (err) {

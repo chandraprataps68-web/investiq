@@ -466,11 +466,12 @@ app.get('/api/fno/index-futures', requireAuth, async (req, res) => {
 });
 
 // Option chain for given symbol; returns analytics + chain
-// query params: symbol (e.g. NSE:NIFTY50-INDEX or NIFTY for shortcut), strikes (default 20)
+// query params: symbol (e.g. NSE:NIFTY50-INDEX or NIFTY for shortcut), strikes (default 20), expiry (epoch seconds, optional)
 app.get('/api/fno/option-chain', requireAuth, async (req, res) => {
   try {
     let sym = req.query.symbol || 'NSE:NIFTY50-INDEX';
     const strikes = parseInt(req.query.strikes || '20', 10);
+    const expiry = req.query.expiry || '';
     // Shortcuts
     const shortcuts = {
       NIFTY: 'NSE:NIFTY50-INDEX',
@@ -480,11 +481,11 @@ app.get('/api/fno/option-chain', requireAuth, async (req, res) => {
     };
     if (shortcuts[sym.toUpperCase()]) sym = shortcuts[sym.toUpperCase()];
     if (!sym.includes(':')) sym = toFyersEquity(sym);
-    const ck = `fno:oc:${sym}:${strikes}`;
+    const ck = `fno:oc:${sym}:${strikes}:${expiry}`;
     const cached = cacheGet(ck);
     if (cached) return res.json({ ...cached, fromCache: true });
     const fyers = getFyers();
-    const r = await fetchOptionChain(fyers, sym, strikes);
+    const r = await fetchOptionChain(fyers, sym, strikes, expiry);
     if (r.error) return res.status(500).json({ error: r.error });
     const analyzed = analyzeOptionChain(r.data);
     const result = { symbol: sym, ...analyzed, timestamp: new Date().toISOString() };
