@@ -2,10 +2,12 @@
 //
 // Three capabilities:
 //   1. Index Futures: spot vs futures, basis (premium/discount), OI snapshot
-//   2. Option Chain: full chain with PCR, Max Pain, OI walls, IV
+//   2. Option Chain: full chain with PCR, Max Pain, OI walls, IV, Greeks
 //   3. Stock F&O Buildup: classify F&O stocks by OI buildup quadrant
 //
 // All Fyers-driven; caller passes fetcher functions.
+
+const greeks = require('./greeks');
 
 // ─── Index futures definitions ─────────────────────────────────
 // Indian indices: spot has -INDEX suffix, futures use {INDEX}{YY}{MMM}FUT
@@ -216,7 +218,8 @@ function findOIWalls(optionsChain) {
 }
 
 // Combine all option chain analytics into one analysis object
-function analyzeOptionChain(rawData) {
+// expiryEpochSeconds: optional — if provided, computes IV+Greeks per strike
+function analyzeOptionChain(rawData, expiryEpochSeconds) {
   const fullChain = rawData.optionsChain || [];
   if (!fullChain.length) return { error: 'empty chain' };
 
@@ -230,9 +233,19 @@ function analyzeOptionChain(rawData) {
   const futuresChangePct = underlyingRow?.fpchp ?? null;
 
   // Strike rows only (exclude the underlying)
-  const chain = fullChain.filter((o) => o.strike_price > 0 && (o.option_type === 'CE' || o.option_type === 'PE'));
+  let chain = fullChain.filter((o) => o.strike_price > 0 && (o.option_type === 'CE' || o.option_type === 'PE'));
 
-  // India VIX: response field is `indiavixData` (no period). It's an object {ltp, ...} or sometimes a number.
+  // Compute time to expiry. If caller didn't pass expiry, use the first one in expiryData
+  // (which is the nearest, matching the chain that Fyers returned).
+  const expiryUsed = expiryEpochSeconds || rawData.expiryData?.[0]?.expiry;
+  const T = greeks.yearsToExpiry(expiryUsed);
+
+  // Enrich with IV + Greeks if we have spot and time
+  if (spot && T && T > 0) {
+    chain = chain.map((row) => greeks.enrichOption(row, spot, T));
+  }
+
+  // India VIX
   let indiaVix = null;
   if (rawData.indiavixData != null) {
     indiaVix = typeof rawData.indiavixData === 'number'
@@ -255,10 +268,12 @@ function analyzeOptionChain(rawData) {
     putOI: rawData.putOi ?? null,
     indiaVix,
     expiries: rawData.expiryData || [],
+    expiryUsed,
+    timeToExpiry: T,
     pcr: computePCR(chain),
     maxPain: computeMaxPain(chain),
     oiWalls: findOIWalls(chain),
-    chain, // strike rows only
+    chain, // strike rows now enriched with iv, delta, gamma, theta, vega
     marketClosed: allZeroOiChanges,
   };
 }

@@ -487,7 +487,7 @@ app.get('/api/fno/option-chain', requireAuth, async (req, res) => {
     const fyers = getFyers();
     const r = await fetchOptionChain(fyers, sym, strikes, expiry);
     if (r.error) return res.status(500).json({ error: r.error });
-    const analyzed = analyzeOptionChain(r.data);
+    const analyzed = analyzeOptionChain(r.data, expiry);
     const result = { symbol: sym, ...analyzed, timestamp: new Date().toISOString() };
     cacheSet(ck, result, 30 * 1000); // 30s — option chains move fast
     res.json(result);
