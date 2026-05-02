@@ -88,18 +88,25 @@ function impliedVol(marketPrice, S, K, T, r, type) {
   const intrinsic = type === 'CE' ? Math.max(S - K, 0) : Math.max(K - S, 0);
   if (marketPrice < intrinsic - 0.01) return null; // arb opportunity, skip
 
+  // Skip very deep OTM options where price is dominated by bid/ask noise rather
+  // than fair value. Threshold: if time value (price - intrinsic) is < ₹2 AND
+  // we're far OTM, skip — IV is unreliable.
+  const timeValue = marketPrice - intrinsic;
+  const moneyness = Math.abs(Math.log(S / K));
+  if (timeValue < 2 && moneyness > 0.05) return null;
+
   // Initial guess from Brenner-Subrahmanyam approximation:
   // sigma ≈ sqrt(2π/T) * (price / S)
   let sigma = Math.sqrt(2 * Math.PI / T) * (marketPrice / S);
-  sigma = Math.max(0.01, Math.min(5, sigma)); // clamp to sensible range
+  sigma = Math.max(0.01, Math.min(5, sigma)); // clamp to sensible starting range
 
   // Newton-Raphson with up to 50 iterations
+  let converged = false;
   for (let i = 0; i < 50; i++) {
     const price = bsPrice(S, K, T, r, sigma, type);
     const diff = price - marketPrice;
-    if (Math.abs(diff) < 0.005) return sigma; // converged within half a paisa
+    if (Math.abs(diff) < 0.005) { converged = true; break; }
 
-    // Vega for Newton step (per 1.0 not per 1%)
     const sqrtT = Math.sqrt(T);
     const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
     const vega = S * normPDF(d1) * sqrtT;
@@ -109,6 +116,13 @@ function impliedVol(marketPrice, S, K, T, r, type) {
     if (sigma <= 0.001) sigma = 0.001;
     if (sigma > 5) sigma = 5;
   }
+
+  // Reject results that didn't converge or hit the boundaries — these are garbage
+  if (!converged) return null;
+  if (sigma <= 0.005 || sigma >= 4.99) return null;
+  // Sanity bounds — Indian options rarely trade outside 5%-150% IV
+  if (sigma < 0.02 || sigma > 2.0) return null;
+
   return sigma;
 }
 

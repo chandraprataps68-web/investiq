@@ -92,44 +92,52 @@ async function fetchCrypto() {
       };
     });
   } catch (err) {
-    console.warn('[crypto] CoinGecko failed, trying Binance fallback:', err.message);
-    return fetchCryptoBinanceFallback();
+    console.warn('[crypto] CoinGecko failed, trying CoinCap fallback:', err.message);
+    return fetchCryptoCoinCapFallback();
   }
 }
 
-// Binance fallback — USD prices only, converted to INR via approximate rate.
-// Less rich than CoinGecko but never rate-limits and works from any IP.
-async function fetchCryptoBinanceFallback() {
-  // Binance ticker symbols
+// CoinCap fallback — no API key, no IP blocks, simpler than Binance.
+// Returns USD prices; we convert to INR using a hardcoded approximate rate.
+async function fetchCryptoCoinCapFallback() {
   const map = {
-    bitcoin: 'BTCUSDT',
-    ethereum: 'ETHUSDT',
-    solana: 'SOLUSDT',
-    binancecoin: 'BNBUSDT',
+    bitcoin: 'bitcoin',
+    ethereum: 'ethereum',
+    solana: 'solana',
+    binancecoin: 'binance-coin',
   };
-  // USD/INR fallback rate (approximate; only used if real rate unavailable)
   const USD_INR = 84.5;
   try {
-    const symbols = JSON.stringify(Object.values(map));
-    const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(symbols)}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error(`Binance HTTP ${res.status}`);
-    const arr = await res.json();
-    const bySym = {};
-    for (const t of arr) bySym[t.symbol] = t;
-    return CRYPTO.map((c) => {
-      const t = bySym[map[c.id]];
-      if (!t) return { ...c, error: 'no data' };
-      const usd = parseFloat(t.lastPrice);
-      return {
-        ...c,
-        priceInr: usd * USD_INR,
-        priceUsd: usd,
-        change24h: parseFloat(t.priceChangePercent),
-        volume24h: parseFloat(t.quoteVolume) * USD_INR,
-        source: 'binance',
-      };
-    });
+    // Fetch all in parallel; CoinCap doesn't have a batch endpoint
+    const results = await Promise.all(CRYPTO.map(async (c) => {
+      const cid = map[c.id];
+      if (!cid) return { ...c, error: 'no mapping' };
+      try {
+        const url = `https://api.coincap.io/v2/assets/${cid}`;
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'InvestIQ/6.0' },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) throw new Error(`CoinCap HTTP ${res.status}`);
+        const json = await res.json();
+        const d = json.data;
+        if (!d) throw new Error('no data field');
+        const usd = parseFloat(d.priceUsd);
+        const change24h = parseFloat(d.changePercent24Hr);
+        const volumeUsd = parseFloat(d.volumeUsd24Hr);
+        return {
+          ...c,
+          priceInr: usd * USD_INR,
+          priceUsd: usd,
+          change24h: change24h,
+          volume24h: (volumeUsd || 0) * USD_INR,
+          source: 'coincap',
+        };
+      } catch (err) {
+        return { ...c, error: err.message };
+      }
+    }));
+    return results;
   } catch (err) {
     return CRYPTO.map((c) => ({ ...c, error: err.message }));
   }
