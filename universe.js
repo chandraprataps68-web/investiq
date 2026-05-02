@@ -67,14 +67,17 @@ function toFyersEquity(symbol) {
 }
 
 // ─── MCX Commodities ─────────────────────────────────────────
-// NOTE: contract month codes (e.g. 25DEC) need updating monthly.
+// Symbols are base names; the resolver in commodities.js tries upcoming
+// contract months (e.g. GOLD25APR, GOLD25JUN, GOLD25AUG) and picks the
+// first one Fyers responds to — so this list never goes stale.
 const COMMODITIES = [
-  { id: 'GOLD',       name: 'Gold',           fyers: 'MCX:GOLD25DECFUT',       unit: '/10g',   icon: '🥇' },
-  { id: 'SILVER',     name: 'Silver',         fyers: 'MCX:SILVER25DECFUT',     unit: '/kg',    icon: '🥈' },
-  { id: 'CRUDEOIL',   name: 'Crude Oil',      fyers: 'MCX:CRUDEOIL25DECFUT',   unit: '/bbl',   icon: '🛢️' },
-  { id: 'NATURALGAS', name: 'Natural Gas',    fyers: 'MCX:NATURALGAS25DECFUT', unit: '/mmBtu', icon: '🔥' },
-  { id: 'COPPER',     name: 'Copper',         fyers: 'MCX:COPPER25DECFUT',     unit: '/kg',    icon: '🟫' },
-  { id: 'COALINDIA',  name: 'Coal India (Eq)', fyers: 'NSE:COALINDIA-EQ',       unit: '/sh',    icon: '⚫' },
+  { id: 'GOLD',       name: 'Gold',           base: 'GOLD',       unit: '/10g',   icon: '🥇', exchange: 'MCX' },
+  { id: 'SILVER',     name: 'Silver',         base: 'SILVER',     unit: '/kg',    icon: '🥈', exchange: 'MCX' },
+  { id: 'CRUDEOIL',   name: 'Crude Oil',      base: 'CRUDEOIL',   unit: '/bbl',   icon: '🛢️', exchange: 'MCX' },
+  { id: 'NATURALGAS', name: 'Natural Gas',    base: 'NATURALGAS', unit: '/mmBtu', icon: '🔥', exchange: 'MCX' },
+  { id: 'COPPER',     name: 'Copper',         base: 'COPPER',     unit: '/kg',    icon: '🟫', exchange: 'MCX' },
+  // Coal India is an equity, not a future — fixed symbol
+  { id: 'COALINDIA',  name: 'Coal India (Eq)', fyers: 'NSE:COALINDIA-EQ', unit: '/sh', icon: '⚫' },
 ];
 
 // ─── Crypto via CoinGecko ────────────────────────────────────
