@@ -11,6 +11,10 @@ const TA = require('./ta');
 const { runScanner } = require('./scanner');
 const { getPreMarketSnapshot } = require('./premarket');
 const { fetchCrypto, fetchCryptoHistory, fetchCommodities } = require('./commodities');
+const {
+  INDICES, FNO_STOCKS,
+  getIndexFutures, fetchOptionChain, analyzeOptionChain, getStockBuildup,
+} = require('./fno');
 const { NIFTY_50, NIFTY_NEXT_50, NIFTY_100, EXTENDED_UNIVERSE, toFyersEquity } = require('./universe');
 
 const app = express();
@@ -444,16 +448,76 @@ app.get('/api/crypto-history/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Option chain (Fyers — guarded since SDK builds vary)
+// ═══════════════════════════════════════════════════════════
+//  F&O ROUTES (Index Futures + Option Chain + Stock Buildup)
+// ═══════════════════════════════════════════════════════════
+
+// Index Futures snapshot (Nifty / Bank Nifty / Fin Nifty / Midcap)
+app.get('/api/fno/index-futures', requireAuth, async (req, res) => {
+  try {
+    const ck = 'fno:idx';
+    const cached = cacheGet(ck);
+    if (cached) return res.json({ ...cached, fromCache: true });
+    const data = await getIndexFutures(getQuoteOne);
+    const result = { indices: data, timestamp: new Date().toISOString() };
+    cacheSet(ck, result, 60 * 1000);
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Option chain for given symbol; returns analytics + chain
+// query params: symbol (e.g. NSE:NIFTY50-INDEX or NIFTY for shortcut), strikes (default 20)
+app.get('/api/fno/option-chain', requireAuth, async (req, res) => {
+  try {
+    let sym = req.query.symbol || 'NSE:NIFTY50-INDEX';
+    const strikes = parseInt(req.query.strikes || '20', 10);
+    // Shortcuts
+    const shortcuts = {
+      NIFTY: 'NSE:NIFTY50-INDEX',
+      BANKNIFTY: 'NSE:NIFTYBANK-INDEX',
+      FINNIFTY: 'NSE:FINNIFTY-INDEX',
+      MIDCAP: 'NSE:MIDCPNIFTY-INDEX',
+    };
+    if (shortcuts[sym.toUpperCase()]) sym = shortcuts[sym.toUpperCase()];
+    if (!sym.includes(':')) sym = toFyersEquity(sym);
+    const ck = `fno:oc:${sym}:${strikes}`;
+    const cached = cacheGet(ck);
+    if (cached) return res.json({ ...cached, fromCache: true });
+    const fyers = getFyers();
+    const r = await fetchOptionChain(fyers, sym, strikes);
+    if (r.error) return res.status(500).json({ error: r.error });
+    const analyzed = analyzeOptionChain(r.data);
+    const result = { symbol: sym, ...analyzed, timestamp: new Date().toISOString() };
+    cacheSet(ck, result, 30 * 1000); // 30s — option chains move fast
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Stock F&O OI buildup table
+app.get('/api/fno/buildup', requireAuth, async (req, res) => {
+  try {
+    const ck = 'fno:buildup';
+    const cached = cacheGet(ck);
+    if (cached) return res.json({ ...cached, fromCache: true });
+    const data = await getStockBuildup(getQuoteOne);
+    // Group counts
+    const summary = data.reduce((acc, r) => {
+      acc[r.buildup] = (acc[r.buildup] || 0) + 1;
+      return acc;
+    }, {});
+    const result = { stocks: data, summary, timestamp: new Date().toISOString() };
+    cacheSet(ck, result, 2 * 60 * 1000);
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Legacy alias for the old option-chain stub — kept for compat
 app.get('/api/option-chain/:symbol', requireAuth, async (req, res) => {
   try {
     let sym = decodeURIComponent(req.params.symbol);
     if (!sym.includes(':')) sym = toFyersEquity(sym);
     const fyers = getFyers();
-    if (typeof fyers.getOptionChain !== 'function') {
-      return res.status(501).json({ error: 'option chain not available in this SDK build' });
-    }
-    const r = await fyers.getOptionChain({ symbol: sym, strikecount: 10 });
+    const r = await fetchOptionChain(fyers, sym, 10);
     res.json(r);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
