@@ -405,13 +405,14 @@ app.get('/api/scanner', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Pre-market dashboard
+// Pre-market dashboard (uses Fyers if authenticated for India-specific cues)
 app.get('/api/premarket', async (req, res) => {
   try {
     const ck = 'premarket';
     const cached = cacheGet(ck);
     if (cached) return res.json({ ...cached, fromCache: true });
-    const data = await getPreMarketSnapshot();
+    const fyersIndexFetcher = accessToken ? getQuoteOne : null;
+    const data = await getPreMarketSnapshot({ fyersIndexFetcher });
     cacheSet(ck, data, 5 * 60 * 1000);
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }

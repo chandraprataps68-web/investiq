@@ -165,30 +165,36 @@ async function fetchNews(maxPerFeed = 8) {
   return all.slice(0, 20);
 }
 
-// ─── FII/DII — try Moneycontrol mirror ─────────────────
+// ─── FII/DII via MrChartist's daily-refreshed JSON on GitHub ──
+// Free, public, CDN-cached, no auth, no IP block.
 async function fetchFIIDII() {
-  // Moneycontrol publishes a static daily JSON-ish summary that's more stable than Trendlyne
-  const url = 'https://api.moneycontrol.com/mcapi/v1/markets/get-fii-dii-investments?type=fno&exchange=N';
+  const url = 'https://raw.githubusercontent.com/MrChartist/fii-dii-data/main/data/history.json';
   try {
     const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 InvestIQ/6.0',
-        'Accept': 'application/json',
-      },
+      headers: { 'User-Agent': 'InvestIQ/6.0' },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) throw new Error(`mc HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
-    // Schema may vary; defensively extract
-    const data = json?.data || json;
-    const latestFII = data?.fii?.[0]?.netValue ?? data?.fiiDataDate ?? null;
-    const latestDII = data?.dii?.[0]?.netValue ?? null;
+    // history.json is an array of daily entries, newest last (or first — depends).
+    // Each entry: { date, fii_buy, fii_sell, fii_net, dii_buy, dii_sell, dii_net } (or similar)
+    const arr = Array.isArray(json) ? json : (json.history || json.data || []);
+    if (!arr.length) throw new Error('empty array');
+    // Find latest entry by date
+    const sorted = [...arr].sort((a, b) =>
+      new Date(b.date || b.tradingDate || 0) - new Date(a.date || a.tradingDate || 0)
+    );
+    const latest = sorted[0];
+    // Try common field name variations
+    const fiiNet = latest.fii_net ?? latest.fiiNet ?? latest.FII_Net ?? latest.fii?.net ?? null;
+    const diiNet = latest.dii_net ?? latest.diiNet ?? latest.DII_Net ?? latest.dii?.net ?? null;
+    const date = latest.date || latest.tradingDate || latest.Date;
     return {
-      fii: typeof latestFII === 'number' ? latestFII : null,
-      dii: typeof latestDII === 'number' ? latestDII : null,
-      source: 'moneycontrol',
-      note: 'Cash market, T-1 (previous day)',
-      raw: data?.fiiDataDate || null,
+      fii: typeof fiiNet === 'number' ? fiiNet : parseFloat(fiiNet) || null,
+      dii: typeof diiNet === 'number' ? diiNet : parseFloat(diiNet) || null,
+      date,
+      source: 'github/MrChartist',
+      note: 'Cash market, T-1',
     };
   } catch (err) {
     return { fii: null, dii: null, error: err.message };
@@ -260,12 +266,43 @@ function computeBias({ globalCues, fiiDii }) {
   return { bias, score, reasons };
 }
 
-async function getPreMarketSnapshot() {
+async function getPreMarketSnapshot(opts = {}) {
+  const fyersIndexFetcher = opts.fyersIndexFetcher; // optional: async (fyersSym) => {lp, ch, chp}
+
   const [globalCues, news, fiiDii] = await Promise.all([
     fetchGlobalCues(),
     fetchNews(),
     fetchFIIDII(),
   ]);
+
+  // If Fyers is available, fill in India-specific cues that Stooq/Yahoo struggle with
+  if (fyersIndexFetcher) {
+    const indexMap = {
+      'GIFT_NIFTY': 'NSE:NIFTY50-INDEX',
+      'VIX': 'NSE:INDIAVIX-INDEX', // Note: shows India VIX, not US VIX
+    };
+    await Promise.all(Object.entries(indexMap).map(async ([cueId, fyersSym]) => {
+      const cue = globalCues.find((c) => c.id === cueId);
+      if (!cue || !cue.error) return; // already have data
+      try {
+        const q = await fyersIndexFetcher(fyersSym);
+        if (q && (q.lp != null || q.ltp != null)) {
+          const price = q.lp ?? q.ltp;
+          const change = q.ch;
+          const changePct = q.chp;
+          Object.assign(cue, {
+            price, change, changePct,
+            error: undefined,
+            source: 'fyers',
+          });
+          if (cueId === 'VIX') cue.name = 'India VIX'; // be honest about what we're showing
+        }
+      } catch (err) {
+        // keep cue.error as-is
+      }
+    }));
+  }
+
   const bias = computeBias({ globalCues, fiiDii });
   return {
     timestamp: new Date().toISOString(),
