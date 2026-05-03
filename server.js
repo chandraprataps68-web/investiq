@@ -548,21 +548,117 @@ app.post('/api/fno/strategy', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Strategy preset builder — given preset name + spot + lotSize, return suggested legs
-app.get('/api/fno/strategy-preset', (req, res) => {
-  const name = req.query.name;
-  const spot = parseFloat(req.query.spot);
-  const lotSize = parseInt(req.query.lotSize || '75', 10);
-  if (!strategy.PRESETS[name]) return res.status(400).json({ error: 'unknown preset' });
-  if (!spot || spot <= 0) return res.status(400).json({ error: 'spot required' });
-  const preset = strategy.PRESETS[name];
-  const legs = preset.legs(spot, lotSize, null); // no chain lookup for now; uses estimates
-  res.json({
-    name: preset.name,
-    sentiment: preset.sentiment,
-    description: preset.description,
-    legs,
-  });
+// Strategy preset builder — given preset name + symbol + timeframe,
+// fetch live chain at correct expiry, build legs from REAL premiums,
+// run recommendation engine against current market context.
+app.get('/api/fno/strategy-preset', requireAuth, async (req, res) => {
+  try {
+    const name = req.query.name;
+    const symbol = (req.query.symbol || 'NIFTY').toUpperCase();
+    const timeframe = req.query.timeframe === 'monthly' ? 'monthly' : 'weekly';
+    if (!strategy.PRESETS[name]) return res.status(400).json({ error: 'unknown preset' });
+
+    // Resolve symbol to Fyers format
+    const indexShortcuts = {
+      NIFTY: 'NSE:NIFTY50-INDEX',
+      BANKNIFTY: 'NSE:NIFTYBANK-INDEX',
+      FINNIFTY: 'NSE:FINNIFTY-INDEX',
+    };
+    const lotSizes = { NIFTY: 75, BANKNIFTY: 30, FINNIFTY: 65 };
+    const fyersSym = indexShortcuts[symbol] || symbol;
+    const lotSize = lotSizes[symbol] || 75;
+
+    // Fetch chain to find expiries and ATM strike pricing
+    const fyers = getFyers();
+    const chainResp = await fetchOptionChain(fyers, fyersSym, 30); // 30 strikes for spread coverage
+    if (chainResp.error) return res.status(500).json({ error: chainResp.error });
+
+    // Pick expiry based on timeframe:
+    //  weekly  → nearest expiry (any flag)
+    //  monthly → nearest M-flagged expiry with at least 14 days to expiry
+    const expiryData = chainResp.data?.expiryData || [];
+    let chosenExpiry = null;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const FOURTEEN_DAYS = 14 * 86400;
+    if (timeframe === 'weekly') {
+      const futureExpiries = expiryData.filter(e => parseInt(e.expiry, 10) > nowSec);
+      chosenExpiry = futureExpiries[0]?.expiry;
+    } else {
+      // monthly: find first M-flag with at least 14 days out
+      const monthlies = expiryData.filter(e =>
+        e.expiry_flag === 'M' && parseInt(e.expiry, 10) > nowSec + FOURTEEN_DAYS
+      );
+      chosenExpiry = monthlies[0]?.expiry;
+      // Fallback to any monthly future expiry if none ≥14d
+      if (!chosenExpiry) {
+        const anyMonthly = expiryData.find(e =>
+          e.expiry_flag === 'M' && parseInt(e.expiry, 10) > nowSec
+        );
+        chosenExpiry = anyMonthly?.expiry;
+      }
+    }
+
+    // Re-fetch chain for the specific expiry (chains differ per expiry)
+    let chainAtExpiry = chainResp;
+    if (chosenExpiry && chosenExpiry !== chainResp.data?.expiryData?.[0]?.expiry) {
+      chainAtExpiry = await fetchOptionChain(fyers, fyersSym, 30, chosenExpiry);
+    }
+    const analyzed = analyzeOptionChain(chainAtExpiry.data, chosenExpiry);
+
+    // Spot from analyzed result
+    const spot = analyzed.spot;
+    if (!spot || spot <= 0) {
+      return res.status(500).json({ error: 'could not determine spot price' });
+    }
+
+    // Build a chainAt(strike, type) lookup function over the analyzed chain
+    const chainAt = (strike, type) => {
+      return (analyzed.chain || []).find(r =>
+        r.strike_price === strike && r.option_type === type
+      );
+    };
+
+    // Generate legs from preset (now with real chain)
+    const preset = strategy.PRESETS[name];
+    const legs = preset.legs(spot, lotSize, chainAt, timeframe);
+
+    // Build market context for recommendation engine
+    let premarketScore = 0;
+    try {
+      const fyersIndexFetcher = accessToken ? getQuoteOne : null;
+      const pm = await getPreMarketSnapshot({ fyersIndexFetcher });
+      premarketScore = pm?.bias?.score || 0;
+    } catch (_) { /* premarket unavailable, score stays 0 */ }
+
+    const ctx = {
+      premarketScore,
+      indiaVix: analyzed.indiaVix,
+      spot,
+      maxPainStrike: analyzed.maxPain?.strike,
+      pcrOI: analyzed.pcr?.pcrOI,
+    };
+    const recommendation = strategy.recommendStrategy(name, timeframe, ctx);
+
+    // Find the chosen expiry's date string for display
+    const expiryRow = expiryData.find(e => e.expiry === chosenExpiry);
+    const expiryLabel = expiryRow?.date || '—';
+
+    res.json({
+      name: preset.name,
+      sentiment: preset.sentiment,
+      description: preset.description,
+      legs,
+      timeframe,
+      expiryUsed: chosenExpiry,
+      expiryLabel,
+      spot,
+      recommendation,
+      marketContext: ctx,
+    });
+  } catch (e) {
+    console.error('[strategy-preset]', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════
