@@ -311,29 +311,37 @@ const FNO_STOCKS = [
   'LICI', 'SBILIFE', 'HDFCLIFE', 'BEL', 'HAL', 'PIDILITIND', 'DIVISLAB',
 ];
 
-async function getStockBuildup(fetchQuoteFn) {
+async function getStockBuildup(fetchQuoteFn, fyers) {
   const out = [];
-  // Resolve current-month future for each, fetch quote with OI
   const concurrency = 5;
   for (let i = 0; i < FNO_STOCKS.length; i += concurrency) {
     const batch = FNO_STOCKS.slice(i, i + concurrency);
     const results = await Promise.allSettled(batch.map(async (sym) => {
-      const futSym = await resolveIndexFuture(sym, fetchQuoteFn); // same convention works for stock futs
+      const futSym = await resolveIndexFuture(sym, fetchQuoteFn);
       if (!futSym) return null;
       const q = await fetchQuoteFn(futSym).catch(() => null);
       if (!q) return null;
       const priceChangePct = q.chp ?? null;
       const oi = q.oi ?? null;
-      const prevOI = q.prev_oi ?? q.previousOpenInterest ?? null;
+
+      // Try to get prev OI from quote first (rarely populated for stock futures);
+      // otherwise fetch yesterday's daily candle from history (which includes OI).
+      let prevOI = q.prev_oi ?? q.previousOpenInterest ?? null;
+      if (prevOI == null && fyers && oi != null) {
+        prevOI = await fetchYesterdayOI(fyers, futSym).catch(() => null);
+      }
+
       const oiChangePct = (oi != null && prevOI != null && prevOI > 0)
         ? ((oi - prevOI) / prevOI) * 100
-        : (q.oi_change_perc ?? null); // some Fyers responses include this directly
+        : (q.oi_change_perc ?? null);
+
       return {
         symbol: sym,
         futSymbol: futSym,
         price: q.lp ?? q.ltp ?? null,
         priceChangePct,
         oi,
+        prevOI,
         oiChangePct,
         volume: q.volume ?? q.v ?? null,
         buildup: classifyBuildup(priceChangePct, oiChangePct),
@@ -347,6 +355,42 @@ async function getStockBuildup(fetchQuoteFn) {
     }
   }
   return out;
+}
+
+// Fetch yesterday's OI by pulling 5 days of daily candles for the future symbol.
+// Fyers history endpoint returns OI as the 7th column (index 6) when cont_flag='1'.
+// We pick the most recent candle older than today.
+const _ohiCache = new Map();
+async function fetchYesterdayOI(fyers, futSym) {
+  // Cache 30 minutes — prev-day OI doesn't change intraday
+  const cached = _ohiCache.get(futSym);
+  if (cached && Date.now() - cached.t < 30 * 60 * 1000) return cached.v;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const r = await fyers.getHistory({
+    symbol: futSym,
+    resolution: 'D',
+    date_format: 0,
+    range_from: String(nowSec - 7 * 86400),
+    range_to: String(nowSec),
+    cont_flag: '1',
+  });
+  if (r?.s !== 'ok' || !Array.isArray(r.candles) || r.candles.length === 0) {
+    _ohiCache.set(futSym, { t: Date.now(), v: null });
+    return null;
+  }
+  // Find the most recent candle that's NOT today (we want prev close OI)
+  const todayMidnight = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
+  let prevOI = null;
+  for (let i = r.candles.length - 1; i >= 0; i--) {
+    const c = r.candles[i];
+    if (c[0] < todayMidnight) {
+      // Candle format: [timestamp, open, high, low, close, volume, oi]
+      prevOI = c[6] ?? null;
+      break;
+    }
+  }
+  _ohiCache.set(futSym, { t: Date.now(), v: prevOI });
+  return prevOI;
 }
 
 module.exports = {
