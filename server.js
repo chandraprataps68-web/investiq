@@ -16,6 +16,8 @@ const {
   getIndexFutures, fetchOptionChain, analyzeOptionChain, getStockBuildup,
 } = require('./fno');
 const strategy = require('./strategy');
+const backtest = require('./backtest');
+const optionScanner = require('./optionScanner');
 const { NIFTY_50, NIFTY_NEXT_50, NIFTY_100, EXTENDED_UNIVERSE, toFyersEquity } = require('./universe');
 
 const app = express();
@@ -501,7 +503,7 @@ app.get('/api/fno/buildup', requireAuth, async (req, res) => {
     const ck = 'fno:buildup';
     const cached = cacheGet(ck);
     if (cached) return res.json({ ...cached, fromCache: true });
-    const data = await getStockBuildup(getQuoteOne);
+    const data = await getStockBuildup(getQuoteOne, getFyers());
     // Group counts
     const summary = data.reduce((acc, r) => {
       acc[r.buildup] = (acc[r.buildup] || 0) + 1;
@@ -662,10 +664,175 @@ app.get('/api/fno/strategy-preset', requireAuth, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════
+//  OPTION SCANNER (Phase 3 Batch 2)
+// ═══════════════════════════════════════════════════════════
+
+// Scan equity STRONG BUY/SELL stocks, recommend best CE/PE per stock
+app.get('/api/option-scanner', requireAuth, async (req, res) => {
+  try {
+    const ck = 'opt-scanner';
+    const cached = cacheGet(ck);
+    if (cached && req.query.fresh !== '1') {
+      return res.json({ ...cached, fromCache: true });
+    }
+
+    // Get equity scanner results first
+    const scannerCk = 'scanner';
+    let scannerData = cacheGet(scannerCk);
+    if (!scannerData) {
+      const { runScanner } = require('./scanner');
+      const { NIFTY_100 } = require('./universe');
+      scannerData = await runScanner(
+        (sym) => getHistoryShortKey(sym, 'D', 400),
+        { universe: NIFTY_100, concurrency: 4 }
+      );
+      cacheSet(scannerCk, scannerData, 5 * 60 * 1000);
+    }
+
+    const fyers = getFyers();
+    const recs = await optionScanner.scanOptions(scannerData.results || [], fyers);
+
+    const result = {
+      recommendations: recs,
+      summary: {
+        total: recs.length,
+        bullish: recs.filter(r => r.optionType === 'CE').length,
+        bearish: recs.filter(r => r.optionType === 'PE').length,
+        weekly: recs.filter(r => r.timeframe === 'weekly').length,
+        monthly: recs.filter(r => r.timeframe === 'monthly').length,
+      },
+      timestamp: new Date().toISOString(),
+    };
+    cacheSet(ck, result, 5 * 60 * 1000); // 5 min cache
+    res.json(result);
+  } catch (e) {
+    console.error('[option-scanner]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  BACKTEST (Phase 3 Batch 2)
+// ═══════════════════════════════════════════════════════════
+
+// Get aggregated backtest stats
+app.get('/api/backtest', (req, res) => {
+  try {
+    const stats = backtest.getStats();
+    res.json(stats);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Internal helper: run a snapshot now (called by cron-like check below)
+async function runSnapshotIfNeeded() {
+  const state = backtest.load();
+  if (!backtest.shouldSnapshot(state)) return null;
+  if (!accessToken) return null; // need auth to snapshot
+
+  const fyersIndexFetcher = getQuoteOne;
+
+  try {
+    return await backtest.takeSnapshot({
+      getPremarket: async () => {
+        const { getPreMarketSnapshot } = require('./premarket');
+        return await getPreMarketSnapshot({ fyersIndexFetcher });
+      },
+      getScanner: async () => {
+        const cached = cacheGet('scanner');
+        if (cached) return cached;
+        const { runScanner } = require('./scanner');
+        const { NIFTY_100 } = require('./universe');
+        const data = await runScanner(
+          (sym) => getHistoryShortKey(sym, 'D', 400),
+          { universe: NIFTY_100, concurrency: 4 }
+        );
+        cacheSet('scanner', data, 5 * 60 * 1000);
+        return data;
+      },
+      getStrategyVerdicts: async () => {
+        // Compute verdicts for all 5 strategies × 2 timeframes for NIFTY
+        const fyers = getFyers();
+        const chainResp = await fetchOptionChain(fyers, 'NSE:NIFTY50-INDEX', 30);
+        if (chainResp?.error) return null;
+        const analyzed = analyzeOptionChain(chainResp.data);
+        let pmScore = 0;
+        try {
+          const { getPreMarketSnapshot } = require('./premarket');
+          const pm = await getPreMarketSnapshot({ fyersIndexFetcher });
+          pmScore = pm?.bias?.score || 0;
+        } catch (_) {}
+        const ctx = {
+          premarketScore: pmScore,
+          indiaVix: analyzed.indiaVix,
+          spot: analyzed.spot,
+          maxPainStrike: analyzed.maxPain?.strike,
+          pcrOI: analyzed.pcr?.pcrOI,
+        };
+        const presets = ['longCall', 'longPut', 'bullCallSpread', 'ironCondor', 'longStraddle'];
+        const out = { weekly: {}, monthly: {} };
+        for (const tf of ['weekly', 'monthly']) {
+          for (const p of presets) {
+            out[tf][p] = strategy.recommendStrategy(p, tf, ctx);
+          }
+        }
+        return out;
+      },
+    });
+  } catch (e) {
+    console.error('[backtest snapshot]', e);
+    return null;
+  }
+}
+
+// Internal: verify yesterday's snapshot if window has passed
+async function runVerifyIfNeeded() {
+  const state = backtest.load();
+  const dateToVerify = backtest.shouldVerify(state);
+  if (!dateToVerify) return null;
+  if (!accessToken) return null;
+
+  try {
+    return await backtest.verifySnapshot(dateToVerify, {
+      fetchClose: async (symbol) => {
+        try {
+          const q = await getQuoteOne(`NSE:${symbol}-EQ`);
+          return q ? { close: q.lp ?? q.ltp } : null;
+        } catch (_) { return null; }
+      },
+      getNiftyMove: async () => {
+        try {
+          const q = await getQuoteOne('NSE:NIFTY50-INDEX');
+          return q?.chp ?? null;
+        } catch (_) { return null; }
+      },
+    });
+  } catch (e) {
+    console.error('[backtest verify]', e);
+    return null;
+  }
+}
+
+// Manual trigger endpoint (for testing or forced refresh)
+app.post('/api/backtest/snapshot', requireAuth, async (req, res) => {
+  const r = await runSnapshotIfNeeded();
+  res.json({ ok: !!r, snapshot: r });
+});
+app.post('/api/backtest/verify', requireAuth, async (req, res) => {
+  const r = await runVerifyIfNeeded();
+  res.json({ ok: !!r, verification: r });
+});
+
+// ═══════════════════════════════════════════════════════════
 //  HEALTH
 // ═══════════════════════════════════════════════════════════
 
 app.get('/api/health', (req, res) => {
+  // Cron-like trigger: check if it's snapshot/verification window
+  // (fire-and-forget, doesn't block the response)
+  Promise.all([runSnapshotIfNeeded(), runVerifyIfNeeded()]).catch(() => {});
+
   res.json({
     version: '6.0',
     authenticated: !!accessToken,
