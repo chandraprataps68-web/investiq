@@ -18,6 +18,8 @@ const {
 const strategy = require('./strategy');
 const backtest = require('./backtest');
 const optionScanner = require('./optionScanner');
+const postmortem = require('./postmortem');
+const catalysts = require('./catalysts');
 const { NIFTY_50, NIFTY_NEXT_50, NIFTY_100, EXTENDED_UNIVERSE, toFyersEquity } = require('./universe');
 
 const app = express();
@@ -420,6 +422,18 @@ app.get('/api/premarket', async (req, res) => {
     if (cached) return res.json({ ...cached, fromCache: true });
     const fyersIndexFetcher = accessToken ? getQuoteOne : null;
     const data = await getPreMarketSnapshot({ fyersIndexFetcher });
+
+    // Detect news catalysts and adjust bias confidence
+    if (data.news) {
+      const cat = catalysts.detectCatalysts(data.news);
+      data.catalysts = cat;
+      // If catalysts detected, adjust the bias confidence (not the score itself,
+      // but flag that prediction may be unreliable)
+      if (data.bias && cat.confidenceImpact < 0) {
+        data.bias.catalystWarning = cat.summary;
+        data.bias.confidenceImpact = cat.confidenceImpact;
+      }
+    }
     cacheSet(ck, data, 5 * 60 * 1000);
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -725,6 +739,50 @@ app.get('/api/backtest', (req, res) => {
   }
 });
 
+// Post-mortem analysis: why predictions were right/wrong + recurring patterns
+app.get('/api/postmortem', (req, res) => {
+  try {
+    const state = backtest.load();
+    const result = postmortem.runAnalysis(state);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Diagnostic: snapshot system status — why did/didn't a snapshot fire?
+app.get('/api/backtest/status', (req, res) => {
+  try {
+    const state = backtest.load();
+    const istHour = backtest.nowISTHour();
+    const istDay = new Date(Date.now() + 5.5 * 60 * 60 * 1000).getUTCDay();
+    const snapshotShould = backtest.shouldSnapshot(state);
+    const verifyShould = backtest.shouldVerify(state);
+    res.json({
+      currentISTHour: istHour,
+      istDayOfWeek: istDay,
+      isWeekend: istDay === 0 || istDay === 6,
+      authenticated: !!accessToken,
+      tokenAgeMin: tokenTime ? Math.round((Date.now() - tokenTime) / 60000) : null,
+      shouldSnapshot: snapshotShould,
+      shouldVerify: verifyShould,
+      todayDate: backtest.todayIST(),
+      snapshotsCount: state.snapshots.length,
+      lastSnapshot: state.snapshots[state.snapshots.length - 1]?.date || null,
+      lastUpdate: state.lastUpdate,
+      diagnostic: !accessToken ? 'NOT AUTHENTICATED — snapshot/verify will skip until /auth/login'
+        : (istDay === 0 || istDay === 6) ? 'WEEKEND — no snapshots taken'
+        : (istHour < 8) ? `BEFORE WINDOW — wait until 8 AM IST (currently ${istHour}:00)`
+        : (istHour >= 15 && !verifyShould) ? `AFTER WINDOW — snapshot window closed at 3 PM IST`
+        : snapshotShould ? 'SNAPSHOT SHOULD FIRE NOW — hit /api/backtest/snapshot to trigger'
+        : verifyShould ? `VERIFY SHOULD FIRE — pending date: ${verifyShould}`
+        : 'IN WINDOW — no action needed (already done or no pending work)',
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Internal helper: run a snapshot now (called by cron-like check below)
 async function runSnapshotIfNeeded() {
   const state = backtest.load();
@@ -815,13 +873,39 @@ async function runVerifyIfNeeded() {
 }
 
 // Manual trigger endpoint (for testing or forced refresh)
-app.post('/api/backtest/snapshot', requireAuth, async (req, res) => {
-  const r = await runSnapshotIfNeeded();
-  res.json({ ok: !!r, snapshot: r });
+app.post('/api/backtest/snapshot', async (req, res) => {
+  if (!accessToken) {
+    return res.status(401).json({ ok: false, error: 'Not authenticated. Login at /auth/login first.' });
+  }
+  try {
+    const r = await runSnapshotIfNeeded();
+    if (!r) {
+      const state = backtest.load();
+      const today = backtest.todayIST();
+      const existing = state.snapshots.find(s => s.date === today);
+      if (existing && existing.predictions) {
+        return res.json({ ok: true, message: 'Snapshot already exists for today', snapshot: existing.predictions });
+      }
+      const istHour = backtest.nowISTHour();
+      return res.json({ ok: false, message: `Outside snapshot window (current IST hour: ${istHour}, window: 8-15)` });
+    }
+    res.json({ ok: true, snapshot: r });
+  } catch (e) {
+    console.error('[snapshot manual]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
-app.post('/api/backtest/verify', requireAuth, async (req, res) => {
-  const r = await runVerifyIfNeeded();
-  res.json({ ok: !!r, verification: r });
+
+app.post('/api/backtest/verify', async (req, res) => {
+  if (!accessToken) {
+    return res.status(401).json({ ok: false, error: 'Not authenticated.' });
+  }
+  try {
+    const r = await runVerifyIfNeeded();
+    res.json({ ok: !!r, verification: r });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -830,8 +914,16 @@ app.post('/api/backtest/verify', requireAuth, async (req, res) => {
 
 app.get('/api/health', (req, res) => {
   // Cron-like trigger: check if it's snapshot/verification window
-  // (fire-and-forget, doesn't block the response)
-  Promise.all([runSnapshotIfNeeded(), runVerifyIfNeeded()]).catch(() => {});
+  // (fire-and-forget, doesn't block the response).
+  // Logs to server output so we can see WHY a snapshot fired or didn't.
+  if (accessToken) {
+    Promise.all([runSnapshotIfNeeded(), runVerifyIfNeeded()])
+      .then(([s, v]) => {
+        if (s) console.log(`[cron] snapshot fired for ${backtest.todayIST()}`);
+        if (v) console.log(`[cron] verification fired for ${v.date || 'unknown date'}`);
+      })
+      .catch((e) => console.error('[cron] error:', e.message));
+  }
 
   res.json({
     version: '6.0',
@@ -842,6 +934,7 @@ app.get('/api/health', (req, res) => {
     cacheSize: cache.size,
     uptime: Math.round(process.uptime()) + 's',
     marketHours: isMarketHours(),
+    istHour: backtest.nowISTHour(),
   });
 });
 

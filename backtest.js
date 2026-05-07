@@ -51,6 +51,13 @@ function todayIST() {
   return new Date(istMs).toISOString().slice(0, 10);
 }
 
+// Get yesterday's IST date string (for verification logic)
+function yesterdayIST() {
+  const now = new Date();
+  const istMs = now.getTime() + (5.5 * 60 * 60 * 1000) - 86400000;
+  return new Date(istMs).toISOString().slice(0, 10);
+}
+
 // Get current IST hour (0-23)
 function nowISTHour() {
   const now = new Date();
@@ -58,33 +65,51 @@ function nowISTHour() {
   return new Date(istMs).getUTCHours();
 }
 
+// Get IST day of week (0=Sun, 6=Sat). Computed from IST time, not UTC.
+function nowISTDayOfWeek() {
+  const now = new Date();
+  const istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
+  return new Date(istMs).getUTCDay();
+}
+
 // Find snapshot for a given date
 function findSnapshot(state, date) {
   return state.snapshots.find(s => s.date === date);
 }
 
-// Determine if we should snapshot now (8:00-9:10 IST, weekday, not done yet)
+// Determine if we should snapshot now.
+// Window: 8:00 AM - 3:00 PM IST (was 8-10, too narrow if server slept).
+// As long as we capture pre-market data BEFORE market close, the snapshot has value.
+// Idempotent: only one snapshot per day, but can be taken any time in window.
 function shouldSnapshot(state) {
-  const date = todayIST();
-  const dayOfWeek = new Date().getUTCDay(); // 0=Sun, 6=Sat
-  if (dayOfWeek === 0 || dayOfWeek === 6) return false;
+  const dayOfWeek = nowISTDayOfWeek();
+  if (dayOfWeek === 0 || dayOfWeek === 6) return false; // weekend
   const hour = nowISTHour();
-  if (hour < 8 || hour >= 10) return false; // 8 AM - 10 AM window
+  // Extended window: 8 AM to 3 PM IST. After 3 PM market closes and snapshot loses meaning.
+  if (hour < 8 || hour >= 15) return false;
+  const date = todayIST();
   const existing = findSnapshot(state, date);
-  if (existing && existing.predictions) return false;
+  if (existing && existing.predictions) return false; // already done today
   return true;
 }
 
-// Determine if we should verify yesterday's snapshot (after 15:45 IST, weekday)
+// Determine if we should verify yesterday's snapshot.
+// Window: 3:45 PM IST onward (any time after market close on the same day).
+// Also catches up on any unverified snapshots from prior days.
 function shouldVerify(state) {
-  const dayOfWeek = new Date().getUTCDay();
+  const dayOfWeek = nowISTDayOfWeek();
   if (dayOfWeek === 0 || dayOfWeek === 6) return false;
   const hour = nowISTHour();
-  if (hour < 15) return false;
-  // Find most recent snapshot that's not yet verified
+  if (hour < 15) return false; // verification needs market close data
+  // Find most recent snapshot that has predictions but no verification
+  // We look back up to 7 days in case of long downtime
   for (let i = state.snapshots.length - 1; i >= 0; i--) {
     const s = state.snapshots[i];
-    if (s.predictions && !s.verification) return s.date;
+    if (s.predictions && !s.verification) {
+      // Don't verify today's snapshot until we're past 3:45 PM AND it's not from earlier today
+      // Actually we DO want to verify today's after 3:45 PM since market is closed
+      return s.date;
+    }
   }
   return false;
 }
@@ -93,11 +118,18 @@ function shouldVerify(state) {
 async function takeSnapshot({ getPremarket, getScanner, getStrategyVerdicts }) {
   const state = load();
   const date = todayIST();
+  console.log(`[backtest] taking snapshot for ${date} at IST hour ${nowISTHour()}`);
 
   let premarket, scanner, strategy;
-  try { premarket = await getPremarket(); } catch (e) { console.error('[backtest] premarket fail:', e.message); }
-  try { scanner = await getScanner(); } catch (e) { console.error('[backtest] scanner fail:', e.message); }
-  try { strategy = await getStrategyVerdicts(); } catch (e) { console.error('[backtest] strategy fail:', e.message); }
+  const errors = [];
+  try { premarket = await getPremarket(); }
+  catch (e) { console.error('[backtest] premarket fail:', e.message); errors.push('premarket: ' + e.message); }
+  try { scanner = await getScanner(); }
+  catch (e) { console.error('[backtest] scanner fail:', e.message); errors.push('scanner: ' + e.message); }
+  try { strategy = await getStrategyVerdicts(); }
+  catch (e) { console.error('[backtest] strategy fail:', e.message); errors.push('strategy: ' + e.message); }
+
+  console.log(`[backtest] snapshot data — premarket: ${premarket ? '✓' : '✗'}, scanner: ${scanner ? '✓' : '✗'} (${(scanner?.results?.length || 0)} stocks), strategy: ${strategy ? '✓' : '✗'}`);
 
   // Distill predictions to compact form (we don't need every detail, just the
   // bits we'll verify tomorrow).
@@ -122,6 +154,7 @@ async function takeSnapshot({ getPremarket, getScanner, getStrategyVerdicts }) {
       monthly: strategy.monthly,
     } : null,
     timestamp: new Date().toISOString(),
+    errors: errors.length > 0 ? errors : undefined,
   };
 
   // Insert or update snapshot
