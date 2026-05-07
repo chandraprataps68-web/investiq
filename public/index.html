@@ -441,6 +441,11 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:16px" id="comm-signals-card">
+    <div class="card-title">Trade Signals · Swing (3-10 day) · Conf ≥75</div>
+    <div id="comm-signals-content"><div class="loading"><span class="spinner"></span>Computing signals…</div></div>
+  </div>
+
   <div class="card" style="margin-bottom:16px">
     <div class="card-title">Commodities · MCX</div>
     <div class="grid grid-12" id="commodities-grid">
@@ -1074,6 +1079,9 @@ async function loadCommodities(force) {
   const data = await fetch(url).then(r => r.json()).catch(() => null);
   if (!data) return;
 
+  // Kick off signals load in parallel (separate, slower endpoint)
+  loadCommoditySignals(force);
+
   const commGrid = document.getElementById('commodities-grid');
   commGrid.innerHTML = (data.commodities || []).map(c => `
     <div class="col-4">
@@ -1104,6 +1112,108 @@ async function loadCommodities(force) {
   // Crypto: fetch directly from browser to CoinGecko.
   // Render's cloud IPs are blocked by most crypto APIs; user's home IP is not.
   loadCryptoFromBrowser();
+}
+
+// ============ Commodity Signals (Phase 4A) ============
+async function loadCommoditySignals(force) {
+  const el = document.getElementById('comm-signals-content');
+  if (!el) return;
+  const url = '/api/commodity-signals' + (force ? '?fresh=1' : '');
+  try {
+    const data = await fetch(url).then(r => r.json());
+    if (data.error) {
+      el.innerHTML = `<div class="empty" style="padding:20px">Signals unavailable: ${data.error}</div>`;
+      return;
+    }
+
+    const sigs = data.signals || [];
+    const skipped = data.skipped || [];
+
+    // Header summary
+    const buys = sigs.filter(s => s.verdict.includes('BUY')).length;
+    const sells = sigs.filter(s => s.verdict.includes('SELL')).length;
+    const headerText = sigs.length === 0
+      ? `<span style="color:var(--ink-3)">No high-confidence signals right now (${data.total} commodities scanned, all below ${data.threshold} threshold or HOLD).</span>`
+      : `<span style="color:var(--buy)">${buys} BUY</span> · <span style="color:var(--sell)">${sells} SELL</span> · ${skipped.length} skipped`;
+
+    if (sigs.length === 0) {
+      el.innerHTML = `
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink-3);margin-bottom:8px">${headerText}</div>
+        ${skipped.length > 0 ? `
+          <div style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-top:12px">
+            ${skipped.map(s => `<div style="margin:2px 0">· ${s.symbol}: ${s.reason}</div>`).join('')}
+          </div>
+        ` : ''}
+      `;
+      return;
+    }
+
+    const sigCards = sigs.map(s => {
+      const isBuy = s.verdict.includes('BUY');
+      const verdictColor = isBuy ? 'var(--buy)' : 'var(--sell)';
+      const verdictBg = isBuy ? 'rgba(78,206,121,.1)' : 'rgba(255,107,107,.1)';
+      const fmt0 = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
+      const movePct = ((s.target - s.price) / s.price * 100).toFixed(1);
+      const stopPct = ((s.stop - s.price) / s.price * 100).toFixed(1);
+      return `
+        <div style="margin:12px 0;padding:14px 16px;background:${verdictBg};border-left:3px solid ${verdictColor};border-radius:4px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div>
+              <span style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600">${s.name}</span>
+              <span style="margin-left:12px;color:${verdictColor};font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600">${s.verdict}</span>
+              <span style="margin-left:8px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">${s.horizon} · ${s.holdDays}d</span>
+            </div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:14px">
+              <span style="color:${verdictColor};font-weight:600">CONF ${s.confidence}</span>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;font-family:'JetBrains Mono',monospace;font-size:12px;margin-top:10px">
+            <div>
+              <div style="color:var(--ink-3);font-size:10px;letter-spacing:0.06em">PRICE</div>
+              <div style="font-size:14px">${fmt0(s.price)}</div>
+            </div>
+            <div>
+              <div style="color:var(--ink-3);font-size:10px;letter-spacing:0.06em">ENTRY ZONE</div>
+              <div style="font-size:14px">${fmt0(s.entryLow)}–${fmt0(s.entryHigh)}</div>
+            </div>
+            <div>
+              <div style="color:var(--ink-3);font-size:10px;letter-spacing:0.06em">TARGET</div>
+              <div style="font-size:14px;color:var(--buy)">${fmt0(s.target)} <span style="font-size:10px;opacity:.7">(${movePct > 0 ? '+' : ''}${movePct}%)</span></div>
+            </div>
+            <div>
+              <div style="color:var(--ink-3);font-size:10px;letter-spacing:0.06em">STOP</div>
+              <div style="font-size:14px;color:var(--sell)">${fmt0(s.stop)} <span style="font-size:10px;opacity:.7">(${stopPct > 0 ? '+' : ''}${stopPct}%)</span></div>
+            </div>
+            <div>
+              <div style="color:var(--ink-3);font-size:10px;letter-spacing:0.06em">R/R</div>
+              <div style="font-size:14px">${s.rrRatio.toFixed(2)}x</div>
+            </div>
+          </div>
+          <div style="margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">
+            ${s.reasons.map(r => `<span style="margin-right:14px">· ${r}</span>`).join('')}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink-3);margin-bottom:8px">
+        ${headerText} · updated ${new Date(data.timestamp).toLocaleTimeString()}
+      </div>
+      ${sigCards}
+      ${skipped.length > 0 ? `
+        <div style="margin-top:14px;padding:10px 14px;background:rgba(255,255,255,.02);border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-3)">
+          <div style="margin-bottom:4px;letter-spacing:0.06em">SKIPPED (${skipped.length})</div>
+          ${skipped.map(s => `<span style="margin-right:14px">· ${s.symbol}: ${s.reason}</span>`).join('')}
+        </div>
+      ` : ''}
+      <div style="margin-top:12px;font-size:11px;color:var(--ink-3);font-style:italic">
+        Caveats: TA-only, no fundamentals/macro overlay. Continuous back-adjusted MCX series. Targets are 2× ATR; stops 1.2× ATR. Re-evaluate if news catalyst breaks (US dollar, geopolitics, OPEC, China data).
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="empty" style="padding:20px">Failed to load signals: ${e.message}</div>`;
+  }
 }
 
 const CRYPTO_LIST = [
