@@ -20,6 +20,8 @@ const backtest = require('./backtest');
 const optionScanner = require('./optionScanner');
 const postmortem = require('./postmortem');
 const catalysts = require('./catalysts');
+const commodityStitcher = require('./commodityStitcher');
+const commodityTA = require('./commodityTA');
 const { NIFTY_50, NIFTY_NEXT_50, NIFTY_100, EXTENDED_UNIVERSE, toFyersEquity } = require('./universe');
 
 const app = express();
@@ -453,6 +455,45 @@ app.get('/api/commodities', requireAuth, async (req, res) => {
     cacheSet(ck, data, 60 * 1000);
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Commodity Scanner — TA-based BUY/SELL recommendations (≥75 confidence)
+// Uses continuous back-adjusted MCX futures series for robust trend analysis.
+// 30-min cache to keep load manageable on free tier.
+app.get('/api/commodity-signals', requireAuth, async (req, res) => {
+  try {
+    const ck = 'commodity-signals';
+    if (req.query.fresh !== '1') {
+      const cached = cacheGet(ck);
+      if (cached) return res.json({ ...cached, fromCache: true });
+    }
+
+    // Build list of MCX futures-based commodities (skip equity entries like COALINDIA)
+    const { COMMODITIES } = require('./universe');
+    const futsList = COMMODITIES.filter(c => c.base && c.exchange === 'MCX');
+
+    // Fetcher returns short-key candles, just like our internal v6 format
+    const fetcher = (sym, res, days) => getHistoryShortKey(sym, res || 'D', days || 90);
+
+    const getSeries = async (base, exchange) =>
+      commodityStitcher.getContinuousSeries(base, exchange, fetcher, { months: 6 });
+
+    const result = await commodityTA.scanCommodities(futsList, getSeries, {
+      confThreshold: 75,
+    });
+
+    const out = {
+      timestamp: new Date().toISOString(),
+      threshold: 75,
+      horizon: 'SWING',
+      ...result,
+    };
+    cacheSet(ck, out, 30 * 60 * 1000); // 30-min cache
+    res.json(out);
+  } catch (e) {
+    console.error('[commodity-signals]', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/api/crypto-history/:id', async (req, res) => {
