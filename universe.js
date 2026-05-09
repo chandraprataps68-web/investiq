@@ -61,10 +61,72 @@ const EXTENDED_UNIVERSE = [
   'WHIRLPOOL', 'YESBANK', 'ZEEL', 'ZOMATO',
 ];
 
-// Convert plain symbol to Fyers format
+// ─── NSE F&O Universe — stocks with active derivatives ───────
+// Source: NSE list of underlyings with stock futures/options (~220 stocks).
+// This is the BEST universe for the option scanner since every stock here
+// has tradeable options. Updated for 2026 list.
+//
+// Strategy: superset = NIFTY_100 + extended F&O-only mid/small caps.
+// Periodically refresh from https://www.nseindia.com/products-services/equity-derivatives-list-underlyings
+const FNO_EXTRAS = [
+  // Banking / Financials (F&O-active mid-caps)
+  'AUBANK', 'BANDHANBNK', 'BANKBARODA', 'BANKINDIA', 'CANBK',
+  'CHOLAFIN', 'CUB', 'FEDERALBNK', 'HDFCAMC', 'IDFCFIRSTB',
+  'IIFL', 'INDIANB', 'IOB', 'L&TFH', 'LICHSGFIN',
+  'M&MFIN', 'MANAPPURAM', 'MFSL', 'PEL', 'PNB',
+  'POLICYBZR', 'RBLBANK', 'RECLTD', 'SBICARD', 'UNIONBANK',
+  'YESBANK',
+  // Auto & ancillaries
+  'APOLLOTYRE', 'ASHOKLEY', 'BALKRISIND', 'BHARATFORG', 'BOSCHLTD',
+  'EICHERMOT', 'ESCORTS', 'EXIDEIND', 'MOTHERSON', 'MRF',
+  'SONACOMS', 'TIINDIA', 'TVSMOTOR',
+  // IT/Tech
+  'COFORGE', 'KPITTECH', 'LTIM', 'LTTS', 'MPHASIS',
+  'OFSS', 'PERSISTENT',
+  // Pharma & healthcare
+  'ALKEM', 'APLLTD', 'AUROPHARMA', 'BIOCON', 'GLAXO',
+  'GLENMARK', 'GRANULES', 'IPCALAB', 'LAURUSLABS', 'LUPIN',
+  'METROPOLIS', 'NATCOPHARM', 'PEL', 'SYNGENE', 'TORNTPHARM',
+  'ZYDUSLIFE',
+  // Metals / Mining
+  'COALINDIA', 'HINDCOPPER', 'JINDALSTEL', 'NATIONALUM', 'NMDC',
+  'SAIL', 'VEDL',
+  // Energy / Oil
+  'BPCL', 'GAIL', 'GUJGASLTD', 'HINDPETRO', 'IGL',
+  'IOC', 'MGL', 'OIL', 'PETRONET', 'TATAPOWER',
+  // Power & Infra
+  'ADANIENSOL', 'ADANIGREEN', 'ADANIPOWER', 'CESC', 'CONCOR',
+  'CUMMINSIND', 'GMRINFRA', 'IRB', 'NHPC', 'POWERGRID',
+  'SJVN', 'TORNTPOWER',
+  // Cement
+  'ACC', 'AMBUJACEM', 'DALBHARAT', 'JKCEMENT', 'RAMCOCEM',
+  'SHREECEM',
+  // Consumer & Retail
+  'ABFRL', 'BATAINDIA', 'BERGEPAINT', 'COLPAL', 'CROMPTON',
+  'DABUR', 'DIXON', 'GODREJCP', 'GODREJPROP', 'HAVELLS',
+  'JUBLFOOD', 'NAUKRI', 'PAGEIND', 'PIDILITIND', 'POLYCAB',
+  'TATACONSUM', 'UBL', 'UNITDSPR', 'VOLTAS', 'WHIRLPOOL',
+  // Industrials, Engineering, Defence
+  'ASTRAL', 'BEL', 'BHEL', 'CGPOWER', 'CONCOR',
+  'CUMMINSIND', 'HAL', 'L&T', 'MAZDOCK', 'NAVINFLUOR',
+  'PIIND', 'SIEMENS', 'SOLARINDS', 'SRF', 'SUPREMEIND',
+  'TATACOMM', 'TRENT', 'TRITURBINE', 'UPL',
+  // Misc / Others
+  'CDSL', 'BSE', 'IEX', 'IRCTC', 'IRFC',
+  'INDIGO', 'KEI', 'MCX', 'NBCC', 'OBEROIRLTY',
+  'PHOENIXLTD', 'PRESTIGE', 'PVRINOX', 'SUZLON', 'TATAELXSI',
+  'ZOMATO', 'IDEA', 'GUJGASLTD', 'INDUSTOWER', 'INDIAMART',
+];
+
+// Combined: Nifty 100 + F&O extras, deduped
+const FNO_UNIVERSE = Array.from(new Set([...NIFTY_100, ...FNO_EXTRAS]));
+
+// Convert plain symbol to Fyers format (NSE equity)
 function toFyersEquity(symbol) {
   return `NSE:${symbol}-EQ`;
 }
+
+
 
 // ─── MCX Commodities ─────────────────────────────────────────
 // Symbols are base names; the resolver in commodities.js tries upcoming
@@ -112,7 +174,7 @@ const NEWS_FEEDS = [
 ];
 
 module.exports = {
-  NIFTY_50, NIFTY_NEXT_50, NIFTY_100, EXTENDED_UNIVERSE,
+  NIFTY_50, NIFTY_NEXT_50, NIFTY_100, EXTENDED_UNIVERSE, FNO_UNIVERSE,
   COMMODITIES, CRYPTO, GLOBAL_CUES, NEWS_FEEDS,
   toFyersEquity,
 };
