@@ -20,11 +20,17 @@ const TA = require('./ta');
 // Compute swing-horizon signal for a continuous candle series.
 // Returns null if data insufficient or verdict is HOLD/conf < threshold.
 function computeSwingSignal(candles, opts = {}) {
-  const minCandles = opts.minCandles || 220; // need at least 200-DMA + buffer
+  // Tiered minimums:
+  //   ≥220 → full TA with 200-DMA (ideal)
+  //   ≥80  → reduced TA without 200-DMA (use EMA50 as longest)
+  //   <80  → insufficient
+  const HARD_MIN = 80;
+  const FULL_MIN = 220;
   const confThreshold = opts.confThreshold ?? 75;
-  if (!Array.isArray(candles) || candles.length < minCandles) {
-    return { skipped: true, reason: `insufficient data (${candles?.length || 0} < ${minCandles})` };
+  if (!Array.isArray(candles) || candles.length < HARD_MIN) {
+    return { skipped: true, reason: `insufficient data (${candles?.length || 0} candles, need ≥${HARD_MIN})` };
   }
+  const fullMode = candles.length >= FULL_MIN;
 
   const closes = candles.map(c => c.c);
   const highs = candles.map(c => c.h);
@@ -35,22 +41,23 @@ function computeSwingSignal(candles, opts = {}) {
   // ─── Trend indicators ─────────────────────────────────
   const ema20 = TA.ema(closes, 20);
   const ema50 = TA.ema(closes, 50);
-  const ema200 = TA.ema(closes, 200);
+  const ema200 = fullMode ? TA.ema(closes, 200) : null;
 
   const e20 = ema20[ema20.length - 1];
   const e50 = ema50[ema50.length - 1];
-  const e200 = ema200[ema200.length - 1];
+  const e200 = fullMode ? ema200[ema200.length - 1] : null;
 
-  // Trend score: -3 to +3
-  // +3: 20>50>200 + price above 20  (strong uptrend)
-  // -3: 20<50<200 + price below 20  (strong downtrend)
+  // Trend score: -3 to +3 in full mode, -2 to +2 in reduced mode
   let trendScore = 0;
   if (e20 > e50) trendScore += 1;
-  if (e50 > e200) trendScore += 1;
   if (lastClose > e20) trendScore += 1;
   if (e20 < e50) trendScore -= 1;
-  if (e50 < e200) trendScore -= 1;
   if (lastClose < e20) trendScore -= 1;
+  if (fullMode) {
+    if (e50 > e200) trendScore += 1;
+    if (e50 < e200) trendScore -= 1;
+  }
+  const trendMax = fullMode ? 3 : 2;
 
   // ─── Momentum: RSI ────────────────────────────────────
   const rsi = TA.rsi(closes, 14);
@@ -100,7 +107,7 @@ function computeSwingSignal(candles, opts = {}) {
   // ─── Aggregate score → confidence ────────────────────
   // Weights: trend 50%, momentum (RSI+MACD) 35%, volatility 15%
   // Each component scaled to -1..+1 then weighted.
-  const trendNorm = trendScore / 3;
+  const trendNorm = trendScore / trendMax;
   const momNorm = (rsiScore + macdScore) / 3;
   const volBoost = volRegime === 'EXPANDING' ? 0.15 : volRegime === 'CONTRACTED' ? -0.05 : 0;
 
@@ -152,10 +159,16 @@ function computeSwingSignal(candles, opts = {}) {
 
   // ─── Build human-readable reasoning ─────────────────
   const reasons = [];
-  if (e20 > e50 && e50 > e200) reasons.push('20/50/200 EMA stacked bullish');
-  else if (e20 < e50 && e50 < e200) reasons.push('20/50/200 EMA stacked bearish');
-  else if (e20 > e50) reasons.push('Short-term trend bullish (EMA20>EMA50)');
-  else if (e20 < e50) reasons.push('Short-term trend bearish (EMA20<EMA50)');
+  if (fullMode) {
+    if (e20 > e50 && e50 > e200) reasons.push('20/50/200 EMA stacked bullish');
+    else if (e20 < e50 && e50 < e200) reasons.push('20/50/200 EMA stacked bearish');
+    else if (e20 > e50) reasons.push('Short-term trend bullish (EMA20>EMA50)');
+    else if (e20 < e50) reasons.push('Short-term trend bearish (EMA20<EMA50)');
+  } else {
+    if (e20 > e50) reasons.push('Short-term trend bullish (EMA20>EMA50)');
+    else if (e20 < e50) reasons.push('Short-term trend bearish (EMA20<EMA50)');
+    reasons.push(`Reduced TA mode (only ${candles.length} candles, no 200-DMA)`);
+  }
 
   if (lastRsi > 65 && lastRsi < 75) reasons.push(`RSI ${lastRsi.toFixed(0)} — momentum strong`);
   else if (lastRsi > 75) reasons.push(`RSI ${lastRsi.toFixed(0)} — overbought, watch reversal`);
@@ -196,15 +209,15 @@ async function scanCommodities(commodityList, getSeriesFn, opts = {}) {
   for (const c of commodityList) {
     try {
       const series = await getSeriesFn(c.base, c.exchange);
-      if (!series || series.length < 220) {
-        results.push({ symbol: c.base, name: c.name, skipped: true, reason: 'insufficient data' });
+      if (!series || series.length < 80) {
+        results.push({ symbol: c.base, name: c.name, skipped: true, reason: `insufficient data (${series?.length || 0} candles)` });
         continue;
       }
       const sig = computeSwingSignal(series, opts);
       if (sig.skipped) {
         results.push({ symbol: c.base, name: c.name, skipped: true, reason: sig.reason });
       } else {
-        results.push({ symbol: c.base, name: c.name, ...sig });
+        results.push({ symbol: c.base, name: c.name, ...sig, fullMode: series.length >= 220 });
       }
     } catch (e) {
       console.error(`[commodityTA] ${c.base} failed:`, e.message);

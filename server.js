@@ -22,7 +22,7 @@ const postmortem = require('./postmortem');
 const catalysts = require('./catalysts');
 const commodityStitcher = require('./commodityStitcher');
 const commodityTA = require('./commodityTA');
-const { NIFTY_50, NIFTY_NEXT_50, NIFTY_100, EXTENDED_UNIVERSE, toFyersEquity } = require('./universe');
+const { NIFTY_50, NIFTY_NEXT_50, NIFTY_100, EXTENDED_UNIVERSE, FNO_UNIVERSE, toFyersEquity } = require('./universe');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -118,9 +118,44 @@ app.get('/auth/callback', async (req, res) => {
 });
 
 app.get('/api/auth/status', (req, res) => {
+  // Token lifetime: 23 hours, but Fyers can revoke earlier on inactivity
+  const TOKEN_TTL_MS = 23 * 3600 * 1000;
+  const elapsed = tokenTime ? Date.now() - tokenTime : 0;
+  const remainingMs = tokenTime ? Math.max(0, TOKEN_TTL_MS - elapsed) : 0;
+  const remainingMin = Math.round(remainingMs / 60000);
+  const remainingHours = remainingMs / 3600000;
+
+  // Warn levels:
+  //   none     → fresh token, > 4 hours left
+  //   info     → 2-4 hours left
+  //   warning  → 30 min - 2 hours
+  //   critical → < 30 min or expired
+  let warnLevel = 'none';
+  let warnMessage = null;
+  if (!accessToken) {
+    warnLevel = 'critical';
+    warnMessage = 'Not authenticated. Login required.';
+  } else if (remainingMs <= 0) {
+    warnLevel = 'critical';
+    warnMessage = 'Token has expired. Login again to refresh.';
+  } else if (remainingHours < 0.5) {
+    warnLevel = 'critical';
+    warnMessage = `Token expires in ${remainingMin} min. Login soon to avoid mid-task failures.`;
+  } else if (remainingHours < 2) {
+    warnLevel = 'warning';
+    warnMessage = `Token expires in ~${Math.round(remainingHours * 10) / 10}h. Consider re-login when convenient.`;
+  } else if (remainingHours < 4) {
+    warnLevel = 'info';
+    warnMessage = `Token has ~${Math.round(remainingHours)}h remaining.`;
+  }
+
   res.json({
     authenticated: !!accessToken,
-    tokenAge: tokenTime ? Math.round((Date.now() - tokenTime) / 60000) + ' min' : null,
+    tokenAge: tokenTime ? Math.round(elapsed / 60000) + ' min' : null,
+    remainingMin,
+    remainingHours: Math.round(remainingHours * 10) / 10,
+    warnLevel,
+    warnMessage,
     appId: APP_ID ? APP_ID.substring(0, 4) + '...' : 'not set',
   });
 });
@@ -399,6 +434,7 @@ app.get('/api/scanner', requireAuth, async (req, res) => {
     const fresh = req.query.fresh === '1';
     const list = universe === 'nifty50' ? NIFTY_50
       : universe === 'next50' ? NIFTY_NEXT_50
+      : universe === 'fno' ? FNO_UNIVERSE
       : NIFTY_100;
     const ck = `scan:${universe || 'nifty100'}`;
     if (!fresh) {
@@ -407,11 +443,16 @@ app.get('/api/scanner', requireAuth, async (req, res) => {
     } else {
       cache.delete(ck);
     }
+    // F&O universe is ~2x size; longer cache + lower concurrency to avoid Fyers rate limits
+    const concurrency = universe === 'fno' ? 3 : 4;
+    const cacheTtl = universe === 'fno' ? 30 * 60 * 1000 : 15 * 60 * 1000;
     const result = await runScanner(
       (sym) => getHistoryShortKey(sym, 'D', 400),
-      { universe: list, concurrency: 4 }
+      { universe: list, concurrency }
     );
-    cacheSet(ck, result, 15 * 60 * 1000);
+    result.universe = universe || 'nifty100';
+    result.universeSize = list.length;
+    cacheSet(ck, result, cacheTtl);
     res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -457,6 +498,55 @@ app.get('/api/commodities', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Diagnostic: see what the stitcher returns for one commodity. Use to debug
+// why signals fire "insufficient data".
+//   GET /api/commodity-debug/GOLD
+app.get('/api/commodity-debug/:base', requireAuth, async (req, res) => {
+  try {
+    const base = req.params.base.toUpperCase();
+    const fetcher = (sym, resolution, days) => getHistoryShortKey(sym, resolution || 'D', days || 90);
+
+    // First, probe each candidate contract to see what's available
+    const contracts = commodityStitcher.pastContracts(base, 'MCX', 6);
+    const perContract = [];
+    for (const c of contracts) {
+      let count = 0, firstDate = null, lastDate = null, error = null;
+      try {
+        const candles = await fetcher(c.symbol, 'D', 90);
+        count = Array.isArray(candles) ? candles.length : 0;
+        if (count > 0) {
+          firstDate = new Date(candles[0].t * 1000).toISOString().slice(0, 10);
+          lastDate = new Date(candles[count - 1].t * 1000).toISOString().slice(0, 10);
+        }
+      } catch (e) { error = e.message; }
+      perContract.push({ symbol: c.symbol, label: c.label, count, firstDate, lastDate, error });
+    }
+
+    // Now get the actual continuous series
+    const series = await commodityStitcher.getContinuousSeries(base, 'MCX', fetcher, { days: 365 });
+    const activeSymbol = await commodityStitcher.resolveActiveContract(base, 'MCX', fetcher);
+
+    res.json({
+      base,
+      activeSymbol,
+      perContract,
+      stitched: {
+        candleCount: series.length,
+        firstDate: series[0]?.t ? new Date(series[0].t * 1000).toISOString().slice(0, 10) : null,
+        lastDate: series[series.length - 1]?.t ? new Date(series[series.length - 1].t * 1000).toISOString().slice(0, 10) : null,
+        firstClose: series[0]?.c,
+        lastClose: series[series.length - 1]?.c,
+      },
+      sufficient: series.length >= 220,
+      hint: series.length < 220
+        ? `Need ≥220 candles for 200-DMA. Got ${series.length}. Either contract is too new or Fyers returned partial history.`
+        : 'Series is sufficient for full TA.',
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Commodity Scanner — TA-based BUY/SELL recommendations (≥75 confidence)
 // Uses continuous back-adjusted MCX futures series for robust trend analysis.
 // 30-min cache to keep load manageable on free tier.
@@ -476,7 +566,7 @@ app.get('/api/commodity-signals', requireAuth, async (req, res) => {
     const fetcher = (sym, res, days) => getHistoryShortKey(sym, res || 'D', days || 90);
 
     const getSeries = async (base, exchange) =>
-      commodityStitcher.getContinuousSeries(base, exchange, fetcher, { months: 6 });
+      commodityStitcher.getContinuousSeries(base, exchange, fetcher, { days: 365 });
 
     const result = await commodityTA.scanCommodities(futsList, getSeries, {
       confThreshold: 75,
