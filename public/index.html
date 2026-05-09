@@ -405,11 +405,12 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
 <section class="panel" id="panel-scanner">
   <div class="panel-header">
     <h2 class="panel-title">Market Scanner</h2>
-    <span class="panel-sub">Trend template + RS rank + 52WH proximity across Nifty 100</span>
+    <span class="panel-sub">Trend template + RS rank + 52WH proximity</span>
     <div class="panel-actions">
       <button class="btn" onclick="loadScanner('nifty50', true)">Nifty 50</button>
       <button class="btn" onclick="loadScanner('next50', true)">Next 50</button>
-      <button class="btn btn-primary" onclick="loadScanner('nifty100', true)">↻ Nifty 100</button>
+      <button class="btn" onclick="loadScanner('nifty100', true)">Nifty 100</button>
+      <button class="btn btn-primary" onclick="loadScanner('fno', true)">↻ F&amp;O (212)</button>
     </div>
   </div>
   <div id="scanner-summary" style="margin-bottom:16px"></div>
@@ -641,17 +642,67 @@ async function checkAuth() {
     const el = document.getElementById('auth-status');
     const btn = document.getElementById('login-btn');
     if (r.authenticated) {
-      el.textContent = 'FYERS ✓';
-      el.style.color = 'var(--buy)';
-      btn.style.display = 'none';
+      // Adjust label based on warn level
+      if (r.warnLevel === 'critical') {
+        el.textContent = 'FYERS ⚠';
+        el.style.color = 'var(--sell)';
+      } else if (r.warnLevel === 'warning') {
+        el.textContent = 'FYERS ⏱';
+        el.style.color = 'var(--hold)';
+      } else {
+        el.textContent = 'FYERS ✓';
+        el.style.color = 'var(--buy)';
+      }
+      btn.style.display = r.warnLevel === 'critical' ? '' : 'none';
     } else {
       el.textContent = 'NOT CONNECTED';
       el.style.color = 'var(--sell)';
       btn.style.display = '';
     }
+    // Render expiry banner if needed
+    renderAuthBanner(r);
   } catch (e) {
     document.getElementById('auth-status').textContent = 'OFFLINE';
   }
+}
+
+// Banner shown above tabs when token expiry is approaching or expired
+function renderAuthBanner(status) {
+  let el = document.getElementById('auth-banner');
+  // Only show for warning/critical and only when authenticated (the
+  // NOT CONNECTED label already handles the no-token case)
+  if (!status?.authenticated || !status?.warnMessage ||
+      status.warnLevel === 'none' || status.warnLevel === 'info') {
+    if (el) el.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'auth-banner';
+    // Insert directly under header, above tabs
+    const header = document.querySelector('header') || document.body.firstElementChild;
+    header.parentNode.insertBefore(el, header.nextSibling);
+  }
+  const isCritical = status.warnLevel === 'critical';
+  const color = isCritical ? 'var(--sell)' : 'var(--hold)';
+  const bg = isCritical ? 'rgba(255,107,107,.08)' : 'rgba(255,184,0,.08)';
+  const icon = isCritical ? '⚠' : '⏱';
+  el.style.cssText = `
+    padding: 10px 24px;
+    background: ${bg};
+    border-bottom: 1px solid ${color};
+    color: ${color};
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    letter-spacing: 0.04em;
+  `;
+  el.innerHTML = `
+    <span>${icon} ${status.warnMessage}</span>
+    <a href="/auth/login" style="color:${color};text-decoration:underline;font-weight:600">Re-login →</a>
+  `;
 }
 
 // ============ Market clock ============
@@ -764,7 +815,10 @@ let __scanSort = { col: 'confidence', dir: 'desc' };
 async function loadScanner(universe, force) {
   window.__scanLoaded = true;
   const div = document.getElementById('scanner-results');
-  div.innerHTML = '<div class="loading"><span class="spinner"></span>Scanning ' + universe.toUpperCase() + ' — this takes 20–60 seconds...</div>';
+  const loadMsg = universe === 'fno'
+    ? 'Scanning F&O universe (~212 stocks) — this takes 60–120 seconds…'
+    : 'Scanning ' + universe.toUpperCase() + ' — this takes 20–60 seconds...';
+  div.innerHTML = '<div class="loading"><span class="spinner"></span>' + loadMsg + '</div>';
   document.getElementById('scanner-summary').innerHTML = '';
   try {
     const url = '/api/scanner?universe=' + universe + (force ? '&fresh=1' : '');
