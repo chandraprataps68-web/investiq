@@ -359,6 +359,7 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   <button class="tab" data-tab="fno"><span class="tab-num">05</span>F&amp;O</button>
   <button class="tab" data-tab="optscanner"><span class="tab-num">06</span>Options</button>
   <button class="tab" data-tab="backtest"><span class="tab-num">07</span>Backtest</button>
+  <button class="tab" data-tab="intraday"><span class="tab-num">08</span>Intraday</button>
 </nav>
 
 <main>
@@ -616,6 +617,23 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   <div id="bt-content"><div class="empty">Loading backtest data...</div></div>
 </section>
 
+<!-- ============ INTRADAY (Tab 08) ============ -->
+<section class="panel" id="panel-intraday">
+  <div class="panel-header">
+    <h2 class="panel-title">Intraday Playbook</h2>
+    <span class="panel-sub" id="intra-ts">—</span>
+    <div class="panel-actions">
+      <button class="btn" id="intra-tab-banknifty" onclick="loadIntraday('BANKNIFTY')">Bank Nifty</button>
+      <button class="btn" id="intra-tab-nifty" onclick="loadIntraday('NIFTY')">Nifty 50</button>
+      <button class="btn btn-primary" onclick="loadIntraday(window.__intraSym || 'BANKNIFTY', true)">↻ Refresh</button>
+    </div>
+  </div>
+  <div style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-bottom:14px;padding:8px 12px;background:rgba(255,255,255,.02);border-radius:4px">
+    Daily setup levels + intraday BUY/SELL zones. Auto-refreshes every 15 min during market hours. Setup is a MAP, not a live alert — pick the zone that aligns with how the day plays out.
+  </div>
+  <div id="intra-content"><div class="empty">Loading intraday playbook...</div></div>
+</section>
+
 </main>
 
 <script>
@@ -632,6 +650,7 @@ document.querySelectorAll('.tab').forEach(t => {
     if (tab === 'fno' && !window.__fnoLoaded) loadFno();
     if (tab === 'optscanner' && !window.__optLoaded) loadOptionScanner();
     if (tab === 'backtest') loadBacktest(); // always reload since stats accrue
+    if (tab === 'intraday') loadIntraday(); // always reload — refreshes intraday
   });
 });
 
@@ -938,6 +957,23 @@ function searchAndOpen(sym) {
   loadStock(sym);
 }
 
+// Scroll the Commodity Signals card into view and briefly highlight the
+// matching commodity (or its skipped row). Called when user clicks an MCX
+// futures card — those don't go through Stock Search since they're not NSE equities.
+function scrollToCommoditySignal(name) {
+  const card = document.getElementById('comm-signals-card');
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Briefly flash the card border so user sees what they navigated to
+  const orig = card.style.transition;
+  card.style.transition = 'box-shadow 0.4s ease';
+  card.style.boxShadow = '0 0 0 2px var(--accent)';
+  setTimeout(() => {
+    card.style.boxShadow = '';
+    setTimeout(() => { card.style.transition = orig; }, 400);
+  }, 800);
+}
+
 // ============ Stock search ============
 let searchTimer;
 const searchInput = document.getElementById('search-input');
@@ -1137,9 +1173,17 @@ async function loadCommodities(force) {
   loadCommoditySignals(force);
 
   const commGrid = document.getElementById('commodities-grid');
-  commGrid.innerHTML = (data.commodities || []).map(c => `
+  commGrid.innerHTML = (data.commodities || []).map(c => {
+    // Determine click behavior based on instrument type:
+    //   - NSE equity (Coal India) → route to Stock Search with clean symbol
+    //   - MCX futures (Gold, Silver, Crude, NatGas, Copper) → scroll to signals card
+    const isEquity = c.fyers && c.fyers.startsWith('NSE:');
+    const clickHandler = isEquity
+      ? `searchAndOpen('${c.fyers.replace('NSE:', '').replace('-EQ','')}')`
+      : `scrollToCommoditySignal('${c.id || c.name}')`;
+    return `
     <div class="col-4">
-      <div class="commodity-card" onclick="searchAndOpen('${(c.fyers || '').replace('NSE:', '').replace('-EQ','').replace('MCX:', '')}')">
+      <div class="commodity-card" onclick="${clickHandler}">
         <div class="commodity-head">
           <span class="commodity-icon">${c.icon}</span>
           <span class="commodity-name">${c.name}</span>
@@ -1153,7 +1197,7 @@ async function loadCommodities(force) {
         <canvas class="spark" data-spark='${JSON.stringify(c.sparkline || [])}'></canvas>
       </div>
     </div>
-  `).join('');
+  `;}).join('');
 
   // Draw sparklines
   document.querySelectorAll('canvas.spark').forEach(canvas => {
@@ -2314,6 +2358,192 @@ async function triggerSnapshot() {
   }
 }
 
+// ============ Intraday Playbook (Tab 08) ============
+async function loadIntraday(sym, force) {
+  sym = sym || window.__intraSym || 'BANKNIFTY';
+  window.__intraSym = sym;
+
+  // Update toggle button states
+  ['intra-tab-banknifty', 'intra-tab-nifty'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('btn-primary');
+  });
+  const activeTab = sym === 'BANKNIFTY' ? 'intra-tab-banknifty' : 'intra-tab-nifty';
+  const tabEl = document.getElementById(activeTab);
+  if (tabEl) tabEl.classList.add('btn-primary');
+
+  const el = document.getElementById('intra-content');
+  el.innerHTML = '<div class="loading"><span class="spinner"></span>Building playbook for ' + (sym === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty 50') + '…</div>';
+
+  try {
+    const url = '/api/intraday/' + sym + (force ? '?fresh=1' : '');
+    const res = await fetch(url);
+    const data = await res.json();
+    if (res.status === 401 || data.error === 'auth_required') {
+      el.innerHTML = `<div class="empty" style="padding:40px"><strong>Fyers session expired</strong><br><br><a class="auth-btn" href="/auth/login">Reconnect</a></div>`;
+      return;
+    }
+    if (data.error) {
+      el.innerHTML = `<div class="empty">Error: ${data.error}</div>`;
+      return;
+    }
+    renderIntraday(data);
+    document.getElementById('intra-ts').textContent = 'updated ' + new Date(data.timestamp).toLocaleTimeString();
+  } catch (e) {
+    el.innerHTML = `<div class="empty">Failed: ${e.message}</div>`;
+  }
+}
+
+function renderIntraday(data) {
+  const el = document.getElementById('intra-content');
+  const fmt0 = (n) => n != null ? Math.round(n).toLocaleString('en-IN') : '—';
+  const fmt2 = (n) => n != null ? n.toFixed(2) : '—';
+
+  const biasColors = {
+    'BULLISH': 'var(--buy)',
+    'MILD_BULLISH': 'var(--buy)',
+    'NEUTRAL': 'var(--hold)',
+    'MILD_BEARISH': 'var(--sell)',
+    'BEARISH': 'var(--sell)',
+  };
+  const biasColor = biasColors[data.bias.bias] || 'var(--ink-3)';
+
+  // Pivot levels — current row highlighted
+  const pivotLevels = [
+    { label: 'R3', value: data.pivots.r3, color: 'var(--sell)' },
+    { label: 'R2', value: data.pivots.r2, color: 'var(--sell)' },
+    { label: 'R1', value: data.pivots.r1, color: 'var(--sell)' },
+    { label: 'PP', value: data.pivots.pp, color: 'var(--ink-2)' },
+    { label: 'S1', value: data.pivots.s1, color: 'var(--buy)' },
+    { label: 'S2', value: data.pivots.s2, color: 'var(--buy)' },
+    { label: 'S3', value: data.pivots.s3, color: 'var(--buy)' },
+  ];
+
+  // Find which pivot level the spot is between
+  const pivotRowsHtml = pivotLevels.map((p, i) => {
+    const next = pivotLevels[i + 1];
+    const isBetween = next && data.spot <= p.value && data.spot > next.value;
+    const indicator = isBetween ? `<div style="position:absolute;left:0;right:0;height:1px;background:var(--accent);bottom:-1px"><span style="position:absolute;right:0;font-size:10px;color:var(--accent);background:var(--bg-2);padding:0 6px">SPOT ${fmt0(data.spot)}</span></div>` : '';
+    return `
+      <div style="display:flex;justify-content:space-between;padding:6px 12px;border-bottom:1px dashed var(--line);position:relative;font-family:'JetBrains Mono',monospace;font-size:13px">
+        <span style="color:${p.color};font-weight:600">${p.label}</span>
+        <span>${fmt0(p.value)}</span>
+        ${indicator}
+      </div>
+    `;
+  }).join('');
+
+  // BUY/SELL zone cards
+  const renderZone = (zone, kind) => {
+    if (!zone) return `<div class="card"><div style="padding:20px;color:var(--ink-3);text-align:center">No ${kind} zone — no nearby ${kind === 'BUY' ? 'support' : 'resistance'} level</div></div>`;
+    const isBuy = kind === 'BUY';
+    const color = isBuy ? 'var(--buy)' : 'var(--sell)';
+    const bg = isBuy ? 'rgba(78,206,121,.06)' : 'rgba(255,107,107,.06)';
+    return `
+      <div class="card" style="background:${bg};border-left:3px solid ${color}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div>
+            <span style="font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:600;color:${color}">${kind} Zone</span>
+            <span style="margin-left:10px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">@ ${zone.anchor}</span>
+          </div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${color};font-weight:600">R/R ${zone.rrRatio.toFixed(2)}x</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;font-family:'JetBrains Mono',monospace">
+          <div>
+            <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">ENTRY</div>
+            <div style="font-size:18px;font-weight:600">${fmt0(zone.entry)}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">TARGET</div>
+            <div style="font-size:18px;font-weight:600;color:${color}">${fmt0(zone.target)}</div>
+            <div style="font-size:10px;color:var(--ink-3);margin-top:2px">+${fmt2(zone.rewardPct)}% · to ${zone.targetAnchor}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">STOP</div>
+            <div style="font-size:18px;font-weight:600;color:var(--ink-3)">${fmt0(zone.stop)}</div>
+            <div style="font-size:10px;color:var(--ink-3);margin-top:2px">-${fmt2(zone.riskPct)}%</div>
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
+  // OI levels (if available)
+  const oiHtml = data.options?.oiWalls ? `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;font-family:'JetBrains Mono',monospace;font-size:12px">
+      <div>
+        <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em">CALL OI WALL (resistance)</div>
+        <div style="font-size:16px;color:var(--sell);margin-top:4px">${data.options.oiWalls.resistance ? fmt0(data.options.oiWalls.resistance.strike) : '—'}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em">PUT OI WALL (support)</div>
+        <div style="font-size:16px;color:var(--buy);margin-top:4px">${data.options.oiWalls.support ? fmt0(data.options.oiWalls.support.strike) : '—'}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em">MAX PAIN · PCR</div>
+        <div style="font-size:16px;margin-top:4px">${fmt0(data.options.maxPain)} · <span style="color:var(--ink-3);font-size:13px">PCR ${data.options.pcr ? data.options.pcr.toFixed(2) : '—'}</span></div>
+      </div>
+    </div>
+  ` : `<div style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">Option chain unavailable (market closed or fetch error)</div>`;
+
+  el.innerHTML = `
+    <!-- Top: Spot + Bias -->
+    <div class="grid grid-12" style="gap:16px;margin-bottom:18px">
+      <div class="col-6">
+        <div class="card">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:6px">SPOT</div>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:48px;font-weight:600;line-height:1">${fmt0(data.spot)}</div>
+          <div style="margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:13px;color:${data.spotChangePct > 0 ? 'var(--buy)' : 'var(--sell)'}">
+            ${data.spotChangePct != null ? (data.spotChangePct > 0 ? '+' : '') + fmt2(data.spotChangePct) + '%' : '—'}
+          </div>
+          <div style="margin-top:14px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">
+            Y close ${fmt0(data.yesterday.close)} · H ${fmt0(data.yesterday.high)} · L ${fmt0(data.yesterday.low)} · ATR ${fmt0(data.trend.atr)}
+          </div>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="card">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:6px">DAY BIAS</div>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:48px;font-weight:600;line-height:1;color:${biasColor}">${data.bias.bias.replace('_', ' ')}</div>
+          <div style="margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink-3)">
+            score ${data.bias.score >= 0 ? '+' : ''}${data.bias.score} · trend ${data.trend.label.replace('_',' ')} · RSI ${data.trend.rsi ? data.trend.rsi.toFixed(0) : '—'}
+          </div>
+          <div style="margin-top:12px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;line-height:1.6">
+            ${data.bias.reasons.map(r => '· ' + r).join('<br>')}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trade zones -->
+    <div class="grid grid-12" style="gap:16px;margin-bottom:18px">
+      <div class="col-6">${renderZone(data.buyZone, 'BUY')}</div>
+      <div class="col-6">${renderZone(data.sellZone, 'SELL')}</div>
+    </div>
+
+    <!-- Pivot levels + OI -->
+    <div class="grid grid-12" style="gap:16px">
+      <div class="col-6">
+        <div class="card">
+          <div class="card-title">Pivot Levels</div>
+          ${pivotRowsHtml}
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="card">
+          <div class="card-title">Option Chain Levels</div>
+          ${oiHtml}
+          <div style="margin-top:14px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">
+            CE wall = nearest call OI strike (sellers active above this).
+            PE wall = nearest put OI strike (buyers defending below this).
+            Max pain = strike where most option writers profit at expiry.
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 
 checkAuth();
 updateMarketClock();
@@ -2321,6 +2551,12 @@ setInterval(checkAuth, 60_000);
 setInterval(updateMarketClock, 30_000);
 loadPreMarket();
 setInterval(() => { if (document.querySelector('.tab[data-tab=premarket]').classList.contains('active')) loadPreMarket(); }, 5 * 60_000);
+// Intraday auto-refresh: every 15 min, only if intraday tab is active
+setInterval(() => {
+  if (document.querySelector('.tab[data-tab=intraday]')?.classList.contains('active')) {
+    loadIntraday(window.__intraSym || 'BANKNIFTY', true);
+  }
+}, 15 * 60_000);
 </script>
 </body>
 </html>
