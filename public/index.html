@@ -2099,30 +2099,57 @@ async function loadOptionScanner(force) {
       <table class="scanner-table">
         <thead>
           <tr>
-            <th>Symbol</th><th>Side</th><th>Strike</th><th>Type</th><th>Expiry (d)</th>
-            <th>Premium</th><th>Target</th><th>Stop</th><th>R/R</th>
-            <th>IV</th><th>Δ</th><th>Stock Conf</th>
+            <th>Symbol</th><th>Type</th><th>Strike</th><th>DTE</th>
+            <th>Premium</th><th>R/R</th>
+            <th title="Probability of Touch — chance stock hits target before expiry">POT %</th>
+            <th title="Probability of Profit — chance option expires ITM">POP %</th>
+            <th title="Quality score: POT × R/R - (1-POT). Higher = better expected value">Quality</th>
+            <th>IV</th><th>Δ</th><th>Conf</th>
           </tr>
         </thead>
         <tbody>
-          ${data.recommendations.map(r => `
-            <tr>
-              <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${r.symbol}</td>
-              <td><span class="signal-pill BUY">BUY</span></td>
-              <td style="font-family:'JetBrains Mono',monospace">${r.strike}</td>
-              <td style="color:${r.optionType === 'CE' ? 'var(--buy)' : 'var(--sell)'};font-weight:600">${r.optionType}</td>
-              <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-3)">${r.expiryDays} <span style="font-size:10px">(${r.timeframe[0]})</span></td>
-              <td style="font-family:'JetBrains Mono',monospace">₹${r.premium}</td>
-              <td style="font-family:'JetBrains Mono',monospace;color:var(--buy)">₹${r.target}</td>
-              <td style="font-family:'JetBrains Mono',monospace;color:var(--sell)">₹${r.stop}</td>
-              <td style="font-family:'JetBrains Mono',monospace;color:${r.riskReward >= 2 ? 'var(--buy)' : r.riskReward >= 1 ? 'var(--hold)' : 'var(--ink-3)'}">${r.riskReward != null ? r.riskReward + 'x' : '—'}</td>
-              <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.iv != null ? r.iv + '%' : '—'}</td>
-              <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.delta != null ? r.delta : '—'}</td>
-              <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-3)">${r.stockConfidence}</td>
-            </tr>
-          `).join('')}
+          ${data.recommendations.map(r => {
+            const qColor = r.qualityScore == null ? 'var(--ink-3)'
+              : r.qualityScore >= 50 ? 'var(--buy)'
+              : r.qualityScore >= 0 ? 'var(--hold)'
+              : 'var(--sell)';
+            const potColor = r.pot == null ? 'var(--ink-3)'
+              : r.pot >= 50 ? 'var(--buy)'
+              : r.pot >= 30 ? 'var(--hold)'
+              : 'var(--sell)';
+            const dteColor = r.expiryDays >= 23 && r.expiryDays <= 50 ? 'var(--buy)'
+              : r.expiryDays >= 8 && r.expiryDays <= 22 ? 'var(--sell)' // death zone
+              : 'var(--ink-3)';
+            const zoneTag = r.expiryZone === 'OPTIMAL' ? '✓'
+              : r.expiryZone === 'WEEKLY_SCALP' ? 'w'
+              : '';
+            return `
+              <tr title="${r.stockSignal} on ${r.symbol} · ${(r.stockConfidenceBreakdown || []).join(' · ')}">
+                <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${r.symbol}</td>
+                <td style="color:${r.optionType === 'CE' ? 'var(--buy)' : 'var(--sell)'};font-weight:600">${r.optionType}</td>
+                <td style="font-family:'JetBrains Mono',monospace">${r.strike}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:${dteColor}">${r.expiryDays}<span style="font-size:10px;opacity:.7"> ${zoneTag}</span></td>
+                <td style="font-family:'JetBrains Mono',monospace">₹${r.premium}</td>
+                <td style="font-family:'JetBrains Mono',monospace">${r.riskReward != null ? r.riskReward + 'x' : '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:${potColor};font-weight:600">${r.pot != null ? r.pot + '%' : '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.pop != null ? r.pop + '%' : '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:${qColor};font-weight:600">${r.qualityScore != null ? (r.qualityScore > 0 ? '+' : '') + r.qualityScore : '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.iv != null ? r.iv + '%' : '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.delta != null ? r.delta : '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-3)">${r.stockConfidence}</td>
+              </tr>
+            `;
+          }).join('')}
         </tbody>
       </table>
+      </div>
+      <div style="margin-top:14px;font-size:11px;color:var(--ink-3);line-height:1.6">
+        <strong style="color:var(--ink-2)">How to read this table:</strong><br>
+        · <strong>POT</strong> = Probability of Touch (chance stock hits target before expiry). Higher is better.<br>
+        · <strong>POP</strong> = Probability of Profit at expiry (option expires above breakeven).<br>
+        · <strong>Quality</strong> = POT × R/R − (1 − POT), scaled. Positive = positive expected value. <strong>Sort priority.</strong><br>
+        · <strong>DTE</strong> color: <span style="color:var(--buy)">green</span> = optimal 23-50d, <span style="color:var(--sell)">red</span> = theta death zone 8-22d.<br>
+        · Hover any row for upstream confidence breakdown.
       </div>
     `;
   } catch (e) {
