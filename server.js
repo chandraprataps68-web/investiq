@@ -22,6 +22,7 @@ const postmortem = require('./postmortem');
 const catalysts = require('./catalysts');
 const commodityStitcher = require('./commodityStitcher');
 const commodityTA = require('./commodityTA');
+const intradayStrategy = require('./intradayStrategy');
 const { NIFTY_50, NIFTY_NEXT_50, NIFTY_100, EXTENDED_UNIVERSE, FNO_UNIVERSE, toFyersEquity } = require('./universe');
 
 const app = express();
@@ -594,6 +595,52 @@ app.get('/api/crypto-history/:id', async (req, res) => {
     );
     res.json({ candles });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Intraday playbook for index trading (Bank Nifty / Nifty 50)
+//   GET /api/intraday/:symbol  where symbol = BANKNIFTY or NIFTY
+// Returns daily setup levels + intraday BUY/SELL zones with target+stop+RR.
+// Cached 5 min — refreshes intraday during market hours.
+app.get('/api/intraday/:symbol', requireAuth, async (req, res) => {
+  try {
+    const symbolKey = req.params.symbol.toUpperCase();
+    if (symbolKey !== 'BANKNIFTY' && symbolKey !== 'NIFTY') {
+      return res.status(400).json({ error: 'symbol must be BANKNIFTY or NIFTY' });
+    }
+    const ck = `intraday:${symbolKey}`;
+    if (req.query.fresh !== '1') {
+      const cached = cacheGet(ck);
+      if (cached) return res.json({ ...cached, fromCache: true });
+    }
+
+    // Wire up data fetchers using existing internals
+    const spotFetcher = (sym) => getQuoteOne(sym);
+    const historyFetcher = (sym, res, days) => getHistoryShortKey(sym, res || 'D', days || 250);
+    const optionChainFetcher = async (key) => {
+      const fyersSym = key === 'BANKNIFTY' ? 'NSE:NIFTYBANK-INDEX' : 'NSE:NIFTY50-INDEX';
+      const fyers = getFyers();
+      const r = await fetchOptionChain(fyers, fyersSym, 20);
+      if (r.error) return { error: r.error };
+      return analyzeOptionChain(r.data);
+    };
+
+    const result = await intradayStrategy.buildPlaybook({
+      symbolKey,
+      spotFetcher,
+      historyFetcher,
+      optionChainFetcher,
+    });
+
+    if (result.error) {
+      return res.status(500).json(result);
+    }
+
+    cacheSet(ck, result, 5 * 60 * 1000); // 5 min — refreshes intraday
+    res.json(result);
+  } catch (e) {
+    console.error('[intraday]', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════
