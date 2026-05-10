@@ -161,9 +161,47 @@ function enrichOption(row, spot, T, r = RISK_FREE_RATE) {
   };
 }
 
+// Probability of Touch (POT) — probability that price touches a target level
+// at any point between now and expiry, under GBM assumption with drift = r - σ²/2.
+//
+// Uses the Reflection Principle: POT(above) ≈ 2 × N(d2_target).
+// (Approximation — assumes zero drift; close enough for practical use.)
+//
+// S: current spot, target: price level, T: years to expiry, sigma: annualized vol (0.20 = 20%)
+// direction: 'above' for upside target, 'below' for downside target
+// Returns probability in [0, 1]
+function probabilityOfTouch(S, target, T, sigma, direction = 'above') {
+  if (!S || !target || !T || !sigma || T <= 0 || sigma <= 0) return null;
+  if (direction === 'above' && target <= S) return 1; // already there
+  if (direction === 'below' && target >= S) return 1;
+  const sqrtT = Math.sqrt(T);
+  // d2-style barrier statistic, simplified (drift treated as zero — conservative)
+  const d = Math.log(target / S) / (sigma * sqrtT);
+  if (direction === 'above') {
+    return Math.min(1, 2 * (1 - normCDF(d)));
+  } else {
+    return Math.min(1, 2 * normCDF(d));
+  }
+}
+
+// Probability of Profit (POP) at expiry — probability that the option finishes ITM
+// by at least the premium paid (i.e. profitable at expiry).
+// For Long Call: breakeven = strike + premium, POP = P(S_T ≥ breakeven) = N(d2_be)
+// For Long Put:  breakeven = strike - premium, POP = P(S_T ≤ breakeven) = N(-d2_be)
+function probabilityOfProfit(S, strike, premium, T, r, sigma, type) {
+  if (!S || !strike || !premium || !T || !sigma || T <= 0 || sigma <= 0) return null;
+  const breakeven = type === 'CE' ? strike + premium : strike - premium;
+  if (breakeven <= 0) return null;
+  const sqrtT = Math.sqrt(T);
+  const d2 = (Math.log(S / breakeven) + (r - 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
+  return type === 'CE' ? normCDF(d2) : normCDF(-d2);
+}
+
+
 module.exports = {
   RISK_FREE_RATE,
   normPDF, normCDF,
   bsPrice, bsGreeks, impliedVol,
   yearsToExpiry, enrichOption,
+  probabilityOfTouch, probabilityOfProfit,
 };
