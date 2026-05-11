@@ -2164,77 +2164,119 @@ async function loadOptionScanner(force) {
       tsEl.textContent = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '—';
       return;
     }
+    // Build tier summary line
+    const tierA = dq?.tierA || 0;
+    const tierB = dq?.tierB || 0;
+    const tierC = dq?.tierC || 0;
     summaryEl.innerHTML = `
-      <span style="color:var(--buy)">${data.summary.bullish} CE (bullish)</span> ·
-      <span style="color:var(--sell)">${data.summary.bearish} PE (bearish)</span> ·
-      ${data.summary.weekly} weekly · ${data.summary.monthly} monthly
+      <span style="color:var(--buy)">${data.summary.bullish} CE</span> ·
+      <span style="color:var(--sell)">${data.summary.bearish} PE</span> ·
+      <span style="color:var(--buy);font-weight:600">${tierA} Tier A</span> ·
+      <span style="color:var(--hold)">${tierB} Tier B</span> ·
+      <span style="color:var(--ink-3)">${tierC} Tier C</span>
       ${data.fromCache ? ' · <span style="color:var(--ink-3)">cached</span>' : ''}
       ${skipBreakdownHtml}
     `;
     tsEl.textContent = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '—';
 
-    tableEl.innerHTML = `
+    // If we have a Tier A pick, surface it as a hero callout above the table
+    const topPick = data.recommendations[0];
+    let heroHtml = '';
+    if (topPick && topPick.tier === 'A') {
+      heroHtml = `
+        <div style="margin-bottom:18px;padding:18px 22px;background:rgba(78,206,121,.08);border-left:3px solid var(--buy);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--buy);letter-spacing:0.12em;margin-bottom:8px">★ HIGHEST CONVICTION PICK</div>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:600;color:var(--ink-1)">
+              ${topPick.symbol} ${topPick.strike} ${topPick.optionType}
+              <span style="font-size:14px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-left:8px">${topPick.expiryDate} (${topPick.expiryDays}d)</span>
+            </div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink-2)">
+              @ ₹${topPick.premium}
+              · POT <span style="color:var(--buy)">${topPick.pot}%</span>
+              · Liq <span style="color:var(--buy)">${topPick.liquidityGrade}</span>
+              · BuyScore <span style="color:var(--buy);font-weight:600">${topPick.buyScore}</span>
+            </div>
+          </div>
+          <div style="margin-top:8px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">
+            Target ₹${topPick.target} · Stop ₹${topPick.stop} · R/R ${topPick.riskReward}x · ${topPick.stockSignal} on ${topPick.symbol} (conf ${topPick.stockConfidence})
+          </div>
+        </div>
+      `;
+    }
+
+    tableEl.innerHTML = heroHtml + `
       <div style="overflow-x:auto">
       <table class="scanner-table">
         <thead>
           <tr>
-            <th>Symbol</th><th>Type</th><th>Strike</th><th>DTE</th>
-            <th>Premium</th><th>R/R</th>
-            <th title="Probability of Touch — chance stock hits target before expiry">POT %</th>
-            <th title="Probability of Profit — chance option expires ITM">POP %</th>
-            <th title="Quality score: POT × R/R - (1-POT). Higher = better expected value">Quality</th>
-            <th>IV</th><th>Δ</th><th>Conf</th>
+            <th>Symbol</th><th>Type</th><th>Strike</th>
+            <th title="Expiry month/date">Expiry</th>
+            <th title="Days to expiry">DTE</th>
+            <th>Premium</th>
+            <th title="Probability of Touch — chance stock hits target before expiry">POT</th>
+            <th title="Theta decay per day (% of premium lost daily, all else equal)">Theta/d</th>
+            <th title="Liquidity grade: A = tight spreads + deep OI, C = thin">Liq</th>
+            <th title="Composite Buy Score (0-100). Weighs Quality (40%) + Theta Safety (30%) + Liquidity (20%) + Proximity (10%)">BuyScore</th>
+            <th title="Tier A: high conviction. Tier B: moderate. Tier C: speculative.">Tier</th>
+            <th>IV</th><th>Conf</th>
           </tr>
         </thead>
         <tbody>
           ${data.recommendations.map(r => {
-            const qColor = r.qualityScore == null ? 'var(--ink-3)'
-              : r.qualityScore >= 50 ? 'var(--buy)'
-              : r.qualityScore >= 0 ? 'var(--hold)'
-              : 'var(--sell)';
+            const tierColor = r.tier === 'A' ? 'var(--buy)'
+              : r.tier === 'B' ? 'var(--hold)'
+              : 'var(--ink-3)';
+            const tierBg = r.tier === 'A' ? 'rgba(78,206,121,.12)'
+              : r.tier === 'B' ? 'rgba(255,184,0,.10)'
+              : 'rgba(255,255,255,.02)';
+            const buyScoreColor = (r.buyScore ?? 0) >= 75 ? 'var(--buy)'
+              : (r.buyScore ?? 0) >= 55 ? 'var(--hold)'
+              : 'var(--ink-3)';
             const potColor = r.pot == null ? 'var(--ink-3)'
               : r.pot >= 50 ? 'var(--buy)'
               : r.pot >= 30 ? 'var(--hold)'
               : 'var(--sell)';
-            const dteColor = r.expiryZone === 'OPTIMAL' ? 'var(--buy)'
-              : r.expiryZone === 'THETA_RISK' ? 'var(--hold)' // amber — caution
-              : r.expiryZone === 'WEEKLY_SCALP' ? 'var(--hold)'
-              : 'var(--ink-3)';
-            const zoneTag = r.expiryZone === 'OPTIMAL' ? '✓'
-              : r.expiryZone === 'THETA_RISK' ? '⚠'
-              : r.expiryZone === 'WEEKLY_SCALP' ? 'w'
-              : '';
-            const zoneTitle = r.expiryZone === 'THETA_RISK'
-              ? 'Theta risk: 15-22 DTE. Next monthly not yet listed. Theta decay will accelerate.'
-              : r.expiryZone === 'WEEKLY_SCALP' ? 'Weekly scalp (high conf only)'
-              : r.expiryZone === 'OPTIMAL' ? 'Optimal 23-50 DTE window' : '';
+            const thetaColor = r.thetaDecayPct == null ? 'var(--ink-3)'
+              : r.thetaDecayPct < 1 ? 'var(--buy)'
+              : r.thetaDecayPct < 3 ? 'var(--hold)'
+              : 'var(--sell)';
+            const liqColor = r.liquidityGrade === 'A' ? 'var(--buy)'
+              : r.liquidityGrade === 'B' ? 'var(--hold)'
+              : 'var(--sell)';
+            // BuyScore breakdown tooltip
+            const bd = r.buyScoreBreakdown || {};
+            const buyScoreTitle = `Quality ${bd.quality}/100 · Theta safety ${bd.thetaSafety}/100 · Liquidity ${bd.liquidity}/100 · Proximity ${bd.proximity}/100`;
             return `
-              <tr title="${r.stockSignal} on ${r.symbol} · ${(r.stockConfidenceBreakdown || []).join(' · ')}">
+              <tr style="background:${tierBg}" title="${r.stockSignal} on ${r.symbol} · ${(r.stockConfidenceBreakdown || []).join(' · ')}">
                 <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${r.symbol}</td>
                 <td style="color:${r.optionType === 'CE' ? 'var(--buy)' : 'var(--sell)'};font-weight:600">${r.optionType}</td>
                 <td style="font-family:'JetBrains Mono',monospace">${r.strike}</td>
-                <td style="font-family:'JetBrains Mono',monospace;color:${dteColor}" title="${zoneTitle}">${r.expiryDays}<span style="font-size:10px;opacity:.7"> ${zoneTag}</span></td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.expiryDate || '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-3);font-size:11px">${r.expiryDays}d</td>
                 <td style="font-family:'JetBrains Mono',monospace">₹${r.premium}</td>
-                <td style="font-family:'JetBrains Mono',monospace">${r.riskReward != null ? r.riskReward + 'x' : '—'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:${potColor};font-weight:600">${r.pot != null ? r.pot + '%' : '—'}</td>
-                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.pop != null ? r.pop + '%' : '—'}</td>
-                <td style="font-family:'JetBrains Mono',monospace;color:${qColor};font-weight:600">${r.qualityScore != null ? (r.qualityScore > 0 ? '+' : '') + r.qualityScore : '—'}</td>
-                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.iv != null ? r.iv + '%' : '—'}</td>
-                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.delta != null ? r.delta : '—'}</td>
-                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-3)">${r.stockConfidence}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:${thetaColor}">${r.thetaDecayPct != null ? r.thetaDecayPct + '%' : '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:${liqColor};font-weight:600;text-align:center">${r.liquidityGrade || '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:${buyScoreColor};font-weight:600" title="${buyScoreTitle}">${r.buyScore ?? '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:${tierColor};font-weight:600;text-align:center">${r.tier || '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2);font-size:11px">${r.iv != null ? r.iv + '%' : '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-3);font-size:11px">${r.stockConfidence}</td>
               </tr>
             `;
           }).join('')}
         </tbody>
       </table>
       </div>
-      <div style="margin-top:14px;font-size:11px;color:var(--ink-3);line-height:1.6">
+      <div style="margin-top:14px;font-size:11px;color:var(--ink-3);line-height:1.7">
         <strong style="color:var(--ink-2)">How to read this table:</strong><br>
-        · <strong>POT</strong> = Probability of Touch (chance stock hits target before expiry). Higher is better.<br>
-        · <strong>POP</strong> = Probability of Profit at expiry (option expires above breakeven).<br>
-        · <strong>Quality</strong> = POT × R/R − (1 − POT), scaled. Positive = positive expected value. <strong>Sort priority.</strong><br>
-        · <strong>DTE</strong> color: <span style="color:var(--buy)">green ✓</span> = optimal 23-50d, <span style="color:var(--hold)">amber ⚠</span> = theta risk 15-22d (next monthly not listed yet — proceed with smaller size).<br>
-        · Hover any row for upstream confidence breakdown.
+        · <strong>BuyScore</strong> (0-100, sort priority): combines Quality (40%) + Theta Safety (30%) + Liquidity (20%) + Proximity (10%). Hover for breakdown.<br>
+        · <strong>Tier</strong>: <span style="color:var(--buy)">A ≥75</span> high conviction · <span style="color:var(--hold)">B 55-74</span> moderate · <span style="color:var(--ink-3)">C &lt;55</span> speculative.<br>
+        · <strong>POT</strong> = Probability of Touch (chance stock hits target before expiry).<br>
+        · <strong>Theta/d</strong> = % of premium lost per day. <span style="color:var(--buy)">&lt;1%</span> safe · <span style="color:var(--hold)">1-3%</span> watch · <span style="color:var(--sell)">&gt;3%</span> rapid burn.<br>
+        · <strong>Liq</strong>: A=tight spreads/deep OI, B=acceptable, C=thin.<br>
+        · <strong>Expiry</strong> shown as month/date. Near-month = easier to trade, more theta. Next month = better math, may need to search "Jun 25" in your broker.<br>
+        · Hover any row for upstream stock confidence breakdown.
       </div>
     `;
   } catch (e) {
