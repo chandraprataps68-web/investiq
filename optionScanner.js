@@ -33,10 +33,12 @@ function strikeStep(price) {
 // Theta decay accelerates non-linearly:
 //   - 0-7 DTE:   highest theta, gamma whipsaw — good for scalps if conf is very high
 //   - 8-22 DTE:  THE DEATH ZONE — theta eats premium fast, not enough time for swing move
-//   - 23-50 DTE: SWEET SPOT — moderate theta, time for thesis to play out
-//   - 50+ DTE:   too much premium paid for vol, lower delta sensitivity
+//   - 23-45 DTE: SWEET SPOT — moderate theta, time for thesis to play out
+//   - 46+ DTE:   too much premium paid for vol, vega exposure dominates
 //
-// Strategy: prefer 28-50 DTE. Only use weekly (<=7 DTE) if confidence ≥ 90.
+// Strategy: STRICTLY prefer 23-45 DTE. Only allow weekly (<=7 DTE) if confidence ≥ 90.
+// If neither is available, return null — caller should skip this stock rather than
+// fall back to suboptimal expiries.
 function pickExpiry(expiries, timeframe, confidence) {
   const nowSec = Math.floor(Date.now() / 1000);
   const DAY = 86400;
@@ -58,28 +60,25 @@ function pickExpiry(expiries, timeframe, confidence) {
     if (weekly) return { expiry: weekly.expiry, dte: weekly.daysOut, zone: 'WEEKLY_SCALP' };
   }
 
-  // Find expiry in sweet spot (23-50 DTE), preferring monthly
-  const sweetSpot = future.find(e =>
-    e.expiry_flag === 'M' && e.daysOut >= 23 && e.daysOut <= 50
+  // Find expiry in STRICT sweet spot (23-45 DTE), preferring monthly
+  const sweetSpotMonthly = future.find(e =>
+    e.expiry_flag === 'M' && e.daysOut >= 23 && e.daysOut <= 45
   );
-  if (sweetSpot) {
-    return { expiry: sweetSpot.expiry, dte: sweetSpot.daysOut, zone: 'OPTIMAL' };
+  if (sweetSpotMonthly) {
+    return { expiry: sweetSpotMonthly.expiry, dte: sweetSpotMonthly.daysOut, zone: 'OPTIMAL' };
   }
 
-  // No monthly in sweet spot — relax to any expiry in 23-50 DTE range
-  const anyInZone = future.find(e => e.daysOut >= 23 && e.daysOut <= 50);
+  // No monthly in sweet spot — accept any expiry in 23-45 DTE
+  const anyInZone = future.find(e => e.daysOut >= 23 && e.daysOut <= 45);
   if (anyInZone) {
     return { expiry: anyInZone.expiry, dte: anyInZone.daysOut, zone: 'OPTIMAL' };
   }
 
-  // Nothing in sweet spot — find the nearest monthly past 22 DTE (next monthly cycle)
-  const nextCycle = future.find(e => e.expiry_flag === 'M' && e.daysOut > 22);
-  if (nextCycle) {
-    return { expiry: nextCycle.expiry, dte: nextCycle.daysOut, zone: 'OPTIMAL' };
-  }
-
-  // FALLBACK: if all available expiries are in death zone or beyond, refuse.
-  // Caller should skip this stock (no good expiry available).
+  // STRICT REFUSAL: nothing in the sweet spot.
+  // Returning null causes the caller to skip this stock entirely. This is
+  // intentional honesty — better to recommend nothing than recommend a bad expiry.
+  // Common cause: standing in the death zone of the cycle (e.g. 8-22 days before
+  // expiry, with the next monthly 50+ days out).
   return null;
 }
 
@@ -110,10 +109,16 @@ function isTradeable(opt) {
   return true;
 }
 
-// Generate option recommendation for one stock signal
+// Generate option recommendation for one stock signal.
+// Returns either a recommendation object, OR { skip: <reason> } so the caller
+// can aggregate WHY stocks were filtered out (data quality transparency).
 async function recommendForStock(stockSignal, fyers) {
-  if (stockSignal.signal !== 'STRONG BUY' && stockSignal.signal !== 'STRONG SELL') return null;
-  if (!stockSignal.price || !stockSignal.targets?.swing) return null;
+  if (stockSignal.signal !== 'STRONG BUY' && stockSignal.signal !== 'STRONG SELL') {
+    return { skip: 'not_strong_signal' };
+  }
+  if (!stockSignal.price || !stockSignal.targets?.swing) {
+    return { skip: 'missing_targets' };
+  }
 
   const isBullish = stockSignal.signal === 'STRONG BUY';
   const optionType = isBullish ? 'CE' : 'PE';
@@ -127,13 +132,13 @@ async function recommendForStock(stockSignal, fyers) {
   try {
     chainResp = await fetchOptionChain(fyers, fyersSym, 30);
   } catch (e) {
-    return null;
+    return { skip: 'chain_fetch_failed' };
   }
-  if (chainResp?.error || !chainResp?.data) return null;
+  if (chainResp?.error || !chainResp?.data) return { skip: 'no_chain_data' };
 
   // Pick expiry with death-zone awareness
   const expiryChoice = pickExpiry(chainResp.data.expiryData || [], timeframe, confidence);
-  if (!expiryChoice) return null; // no good expiry available
+  if (!expiryChoice) return { skip: 'no_optimal_expiry' };
 
   // Refetch at chosen expiry if different from default
   let rawData = chainResp.data;
@@ -147,10 +152,10 @@ async function recommendForStock(stockSignal, fyers) {
 
   // Run through analyzeOptionChain to get spot + Greeks-enriched rows
   const analyzed = analyzeOptionChain(rawData, expiryChoice.expiry);
-  if (analyzed.error) return null;
+  if (analyzed.error) return { skip: 'analyze_failed' };
 
   const spot = analyzed.spot || stockSignal.price;
-  if (!spot || spot <= 0) return null;
+  if (!spot || spot <= 0) return { skip: 'no_spot' };
 
   // Pick strike
   const step = strikeStep(spot);
@@ -159,7 +164,8 @@ async function recommendForStock(stockSignal, fyers) {
   const targetStrike = atmStrike + (offsetDirection * strikeOffset * step);
 
   const opt = findClosestStrike(analyzed.chain || [], targetStrike, optionType);
-  if (!opt || !isTradeable(opt)) return null;
+  if (!opt) return { skip: 'strike_not_found' };
+  if (!isTradeable(opt)) return { skip: 'illiquid_or_high_iv' };
 
   // Compute target/stop on option premium via delta scaling
   const stockTarget = stockSignal.targets.swing.target;
@@ -177,11 +183,8 @@ async function recommendForStock(stockSignal, fyers) {
   const downside = opt.ltp - finalOptStop;
   const riskReward = downside > 0 ? upside / downside : null;
 
-  // ─── Probability calculations (the big Phase 7 addition) ──────
-  // POT = probability spot touches stock-target before option expiry
-  // POP = probability option expires ITM by > premium paid
-  // These reveal the REAL trade quality regardless of confidence inheritance.
-  const T = expiryChoice.dte / 365; // years to expiry
+  // Probability calculations (Phase 7)
+  const T = expiryChoice.dte / 365;
   const sigma = opt.iv != null ? opt.iv / 100 : null;
   let pot = null, pop = null;
   if (sigma && sigma > 0) {
@@ -194,13 +197,10 @@ async function recommendForStock(stockSignal, fyers) {
     );
   }
 
-  // Quality score: combine POT with R/R for ranking.
-  // Expected value-ish: P(touch) × reward - (1-P) × risk, normalized.
-  // We use POT not POP because POT matches how we'd actually exit (at target).
   let qualityScore = null;
   if (pot != null && riskReward != null) {
-    const ev = pot * riskReward - (1 - pot); // expected R per 1R risked
-    qualityScore = Math.round(ev * 100); // scale to centi-R
+    const ev = pot * riskReward - (1 - pot);
+    qualityScore = Math.round(ev * 100);
   }
 
   return {
@@ -210,7 +210,7 @@ async function recommendForStock(stockSignal, fyers) {
     strike: opt.strike_price,
     expiry: expiryChoice.expiry,
     expiryDays: parseFloat(expiryChoice.dte.toFixed(1)),
-    expiryZone: expiryChoice.zone, // 'WEEKLY_SCALP' or 'OPTIMAL'
+    expiryZone: expiryChoice.zone,
     timeframe,
     spot,
     premium: opt.ltp,
@@ -221,47 +221,54 @@ async function recommendForStock(stockSignal, fyers) {
     target: parseFloat(finalOptTarget.toFixed(2)),
     stop: parseFloat(finalOptStop.toFixed(2)),
     riskReward: riskReward != null ? parseFloat(riskReward.toFixed(2)) : null,
-    pot: pot != null ? parseFloat((pot * 100).toFixed(1)) : null,    // %
-    pop: pop != null ? parseFloat((pop * 100).toFixed(1)) : null,    // %
-    qualityScore,                                                     // centi-R EV
+    pot: pot != null ? parseFloat((pot * 100).toFixed(1)) : null,
+    pop: pop != null ? parseFloat((pop * 100).toFixed(1)) : null,
+    qualityScore,
     stockSignal: stockSignal.signal,
     stockConfidence: stockSignal.confidence,
-    stockConfidenceBreakdown: stockSignal.rationale || null, // pass through bull/bear reasons
+    stockConfidenceBreakdown: stockSignal.rationale || null,
     stockPrice: stockSignal.price,
     stockTarget,
     stockStop,
   };
 }
 
-// Main scan: takes equity scanner results, produces option recommendations
+// Main scan: takes equity scanner results, produces option recommendations.
+// Returns { recommendations, dataQuality } where dataQuality tells the UI
+// HOW MANY stocks were considered, returned, and WHY others were skipped.
 async function scanOptions(scannerResults, fyers) {
   const filtered = (scannerResults || []).filter(r =>
     (r.signal === 'STRONG BUY' || r.signal === 'STRONG SELL') &&
     r.confidence >= 70
   );
-  // Limit to top 30 to keep latency reasonable on free tier
   filtered.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
   const top = filtered.slice(0, 30);
 
   const concurrency = 3;
   const recs = [];
+  const skipCounts = {}; // reason → count
   for (let i = 0; i < top.length; i += concurrency) {
     const batch = top.slice(i, i + concurrency);
     const results = await Promise.allSettled(
       batch.map(s => recommendForStock(s, fyers))
     );
     for (const r of results) {
-      if (r.status === 'fulfilled' && r.value) recs.push(r.value);
+      if (r.status !== 'fulfilled' || !r.value) {
+        skipCounts['error'] = (skipCounts['error'] || 0) + 1;
+        continue;
+      }
+      if (r.value.skip) {
+        skipCounts[r.value.skip] = (skipCounts[r.value.skip] || 0) + 1;
+      } else {
+        recs.push(r.value);
+      }
     }
     if (i + concurrency < top.length) {
       await new Promise(res => setTimeout(res, 300));
     }
   }
 
-  // Sort by qualityScore (EV-based) descending, then by POT, then by stock confidence.
-  // This is the BIG Phase 7 change: we rank by expected value, not by upstream
-  // confidence which has no calibration. Recommendations without POP/POT
-  // (e.g. when IV was missing) fall to the bottom but aren't dropped.
+  // Sort by qualityScore (EV-based)
   recs.sort((a, b) => {
     const qa = a.qualityScore ?? -999;
     const qb = b.qualityScore ?? -999;
@@ -271,7 +278,17 @@ async function scanOptions(scannerResults, fyers) {
     if (pa !== pb) return pb - pa;
     return (b.stockConfidence || 0) - (a.stockConfidence || 0);
   });
-  return recs;
+
+  return {
+    recommendations: recs,
+    dataQuality: {
+      stockSignalsConsidered: top.length,
+      strongBuyCount: filtered.filter(f => f.signal === 'STRONG BUY').length,
+      strongSellCount: filtered.filter(f => f.signal === 'STRONG SELL').length,
+      recommendationsReturned: recs.length,
+      skipCounts,
+    },
+  };
 }
 
 module.exports = { scanOptions, recommendForStock };

@@ -882,7 +882,8 @@ app.get('/api/option-scanner', requireAuth, async (req, res) => {
     }
 
     const fyers = getFyers();
-    const recs = await optionScanner.scanOptions(scannerData.results || [], fyers);
+    const scanResult = await optionScanner.scanOptions(scannerData.results || [], fyers);
+    const recs = scanResult.recommendations || [];
 
     const result = {
       recommendations: recs,
@@ -893,6 +894,7 @@ app.get('/api/option-scanner', requireAuth, async (req, res) => {
         weekly: recs.filter(r => r.timeframe === 'weekly').length,
         monthly: recs.filter(r => r.timeframe === 'monthly').length,
       },
+      dataQuality: scanResult.dataQuality, // Phase 8: skip-reason transparency
       timestamp: new Date().toISOString(),
     };
     cacheSet(ck, result, 5 * 60 * 1000); // 5 min cache

@@ -202,9 +202,20 @@ async function fetchFIIDII() {
 }
 
 // ─── Compute directional bias ──────────────────────────
+// Returns { bias, score, reasons, dataQuality: {cuesAvailable, cuesTotal, fiiDiiAvailable, sufficient} }
+//
+// HONESTY GATE: if too few global cues are available, we report INSUFFICIENT DATA
+// rather than computing a confident-looking score from FII/DII alone. The previous
+// behavior produced misleadingly precise verdicts (e.g. NEUTRAL -1) when 10/12
+// upstream feeds were dark.
 function computeBias({ globalCues, fiiDii }) {
   const reasons = [];
   let score = 0;
+
+  // Audit data availability up front
+  const cuesAvailable = (globalCues || []).filter(g => g && g.changePct != null && !g.error).length;
+  const cuesTotal = (globalCues || []).length;
+  const fiiDiiAvailable = (fiiDii?.fii != null) || (fiiDii?.dii != null);
 
   const gift = globalCues.find((g) => g.id === 'GIFT_NIFTY');
   if (gift && gift.changePct != null && !gift.error) {
@@ -256,14 +267,22 @@ function computeBias({ globalCues, fiiDii }) {
     if (dxy.changePct > 0.5) { score -= 1; reasons.push(`Dollar strong (DXY +${dxy.changePct.toFixed(2)}%)`); }
   }
 
+  // HONESTY GATE: Need at least 4 of 12 cues OR (3 cues + FII/DII).
+  // Without this minimum, the bias is essentially noise — we don't have the
+  // upstream signal density to make a real call.
+  const sufficient = cuesAvailable >= 4 || (cuesAvailable >= 3 && fiiDiiAvailable);
+  const dataQuality = { cuesAvailable, cuesTotal, fiiDiiAvailable, sufficient };
+
   let bias;
-  if (score >= 5) bias = 'STRONG BULLISH';
+  if (!sufficient) {
+    bias = 'INSUFFICIENT_DATA';
+  } else if (score >= 5) bias = 'STRONG BULLISH';
   else if (score >= 2) bias = 'BULLISH';
   else if (score <= -5) bias = 'STRONG BEARISH';
   else if (score <= -2) bias = 'BEARISH';
   else bias = 'NEUTRAL';
 
-  return { bias, score, reasons };
+  return { bias, score, reasons, dataQuality };
 }
 
 async function getPreMarketSnapshot(opts = {}) {
