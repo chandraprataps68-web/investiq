@@ -15,7 +15,7 @@
 //  - Re-rank by POT-adjusted score (not just stock confidence)
 
 const { fetchOptionChain, analyzeOptionChain } = require('./fno');
-const { probabilityOfTouch, probabilityOfProfit, RISK_FREE_RATE } = require('./greeks');
+const { probabilityOfTouch, probabilityOfProfit, thetaDecayPct, RISK_FREE_RATE } = require('./greeks');
 
 // Indian stock options use 0.5/1/2.5/5/10/25/50/100 step sizes depending on price.
 function strikeStep(price) {
@@ -28,73 +28,72 @@ function strikeStep(price) {
   return 100;
 }
 
-// Pick expiry from chain.expiries with awareness of theta decay zones.
+// Pick TWO expiries when available: near-month (where retail trades) AND next-month
+// (better theta safety, higher conviction trades).
 //
-// Theta decay zones (calibrated for Indian F&O stock options):
-//   - 0-7 DTE:    DANGER — extreme gamma whipsaw, never for swing
-//   - 8-14 DTE:   AVOID — theta accelerates hard, not enough time for thesis
-//   - 15-22 DTE:  THETA RISK — acceptable when nothing else available (typical
-//                 NSE stock options reality: June monthly not yet listed in early May)
-//   - 23-50 DTE:  OPTIMAL — moderate theta, time for thesis to play out
-//   - 51+ DTE:    HEAVY VEGA — too much premium paid for vol, lower delta sensitivity
+// Indian stock options reality (May 2026 calibration):
+//   - 99% of retail volume lives in NEAR-MONTH expiry
+//   - Next-month expiries exist on Fyers but have wider spreads & lower OI
+//   - Theta is real but secondary to "can I actually trade this contract?"
 //
-// Strategy:
-//   1. If timeframe='weekly' AND confidence >= 90, allow 0-7 DTE for scalps
-//   2. Strongly prefer OPTIMAL zone (23-50 DTE)
-//   3. If OPTIMAL is empty, accept 15-22 DTE with a THETA_RISK tag (caller surfaces this)
-//   4. Refuse if only 0-14 DTE or 50+ DTE available
-//
-// This avoids the previous "0 recommendations" failure when next monthly cycle
-// isn't yet listed in Fyers' expiryData for stock options.
-function pickExpiry(expiries, timeframe, confidence) {
+// Returns: { nearMonth, nextMonth } where each is null or { expiry, dte, zone, expiryDate }
+// Caller decides whether to fetch & enrich one or both.
+function pickExpiries(expiries) {
   const nowSec = Math.floor(Date.now() / 1000);
   const DAY = 86400;
-  if (!Array.isArray(expiries) || expiries.length === 0) return null;
+  if (!Array.isArray(expiries) || expiries.length === 0) {
+    return { nearMonth: null, nextMonth: null };
+  }
 
   const future = expiries
     .filter(e => parseInt(e.expiry, 10) > nowSec)
     .map(e => ({
       ...e,
       daysOut: (parseInt(e.expiry, 10) - nowSec) / DAY,
+      expiryDate: new Date(parseInt(e.expiry, 10) * 1000),
     }))
+    .filter(e => e.daysOut >= 3) // skip same-day/imminent expiry (gamma hell)
     .sort((a, b) => a.daysOut - b.daysOut);
 
-  if (future.length === 0) return null;
+  if (future.length === 0) return { nearMonth: null, nextMonth: null };
 
-  // 1. Weekly scalp (very high conf only)
-  if (timeframe === 'weekly' && confidence >= 90) {
-    const weekly = future.find(e => e.daysOut <= 7);
-    if (weekly) return { expiry: weekly.expiry, dte: weekly.daysOut, zone: 'WEEKLY_SCALP' };
-  }
+  // Find first MONTHLY expiry that's >= 3 days out — that's the current month
+  // (after weekly contracts which we skip for retail safety)
+  const nearMonthly = future.find(e => e.expiry_flag === 'M');
+  // Next monthly = the second M expiry
+  const monthlyExpiries = future.filter(e => e.expiry_flag === 'M');
+  const nextMonthly = monthlyExpiries[1] || null;
 
-  // 2. OPTIMAL zone (23-50 DTE), prefer monthly
-  const sweetMonthly = future.find(e =>
-    e.expiry_flag === 'M' && e.daysOut >= 23 && e.daysOut <= 50
-  );
-  if (sweetMonthly) {
-    return { expiry: sweetMonthly.expiry, dte: sweetMonthly.daysOut, zone: 'OPTIMAL' };
-  }
-  const sweetAny = future.find(e => e.daysOut >= 23 && e.daysOut <= 50);
-  if (sweetAny) {
-    return { expiry: sweetAny.expiry, dte: sweetAny.daysOut, zone: 'OPTIMAL' };
-  }
+  // Some Fyers chains for stock options only return weekly expiries — fall back to
+  // simply "first future" and "second future" if M-flag is missing
+  const nearFallback = future[0];
+  const nextFallback = future.find(e => e.daysOut > (nearFallback?.daysOut || 0) + 7) || null;
 
-  // 3. THETA RISK zone (15-22 DTE) — acceptable last resort
-  // Common in early/mid month when next monthly isn't yet listed by NSE/Fyers
-  // for stock options. Caller should display warning prominently.
-  const thetaRiskMonthly = future.find(e =>
-    e.expiry_flag === 'M' && e.daysOut >= 15 && e.daysOut < 23
-  );
-  if (thetaRiskMonthly) {
-    return { expiry: thetaRiskMonthly.expiry, dte: thetaRiskMonthly.daysOut, zone: 'THETA_RISK' };
-  }
-  const thetaRiskAny = future.find(e => e.daysOut >= 15 && e.daysOut < 23);
-  if (thetaRiskAny) {
-    return { expiry: thetaRiskAny.expiry, dte: thetaRiskAny.daysOut, zone: 'THETA_RISK' };
-  }
+  const near = nearMonthly || nearFallback;
+  const next = nextMonthly || nextFallback;
 
-  // 4. Refuse — only 0-14 DTE (too risky) or 51+ DTE (too heavy in vega)
-  return null;
+  const formatPick = (pick) => pick ? ({
+    expiry: pick.expiry,
+    dte: pick.daysOut,
+    zone: pick.daysOut < 15 ? 'GAMMA_RISK'
+      : pick.daysOut < 23 ? 'THETA_WATCH'
+      : pick.daysOut <= 50 ? 'OPTIMAL'
+      : 'LONG_DATED',
+    expiryDate: pick.expiryDate,
+  }) : null;
+
+  return {
+    nearMonth: formatPick(near),
+    // Avoid returning the same expiry twice if next === near
+    nextMonth: next && next.expiry !== near?.expiry ? formatPick(next) : null,
+  };
+}
+
+// Format expiry date as "May 27" / "Jun 24" — used in UI for clarity
+function formatExpiryShort(dateObj) {
+  if (!dateObj) return '—';
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[dateObj.getMonth()]} ${dateObj.getDate()}`;
 }
 
 function daysToExpiry(expirySec) {
@@ -124,9 +123,200 @@ function isTradeable(opt) {
   return true;
 }
 
-// Generate option recommendation for one stock signal.
-// Returns either a recommendation object, OR { skip: <reason> } so the caller
-// can aggregate WHY stocks were filtered out (data quality transparency).
+// Liquidity grade: A (deep + tight spread), B (acceptable), C (thin/wide).
+// Uses OI, volume, and bid-ask spread when available.
+// During market-closed hours, bid/ask are often 0 → fall back to OI+volume only.
+function gradeLiquidity(opt) {
+  if (!opt) return { grade: 'C', score: 30 };
+  const oi = opt.oi || 0;
+  const vol = opt.volume || 0;
+  const bid = opt.bid || 0;
+  const ask = opt.ask || 0;
+
+  // Component 1: OI band
+  let oiScore = 0;
+  if (oi >= 1_000_000) oiScore = 100;
+  else if (oi >= 500_000) oiScore = 85;
+  else if (oi >= 250_000) oiScore = 70;
+  else if (oi >= 100_000) oiScore = 50;
+  else oiScore = 25;
+
+  // Component 2: Volume band
+  let volScore = 0;
+  if (vol >= 200_000) volScore = 100;
+  else if (vol >= 100_000) volScore = 85;
+  else if (vol >= 50_000) volScore = 70;
+  else if (vol >= 10_000) volScore = 50;
+  else volScore = 25;
+
+  // Component 3: Bid-ask spread (when available — 0 during market close)
+  let spreadScore = null;
+  if (bid > 0 && ask > 0 && ask > bid) {
+    const mid = (bid + ask) / 2;
+    const spreadPct = ((ask - bid) / mid) * 100;
+    if (spreadPct <= 1) spreadScore = 100;
+    else if (spreadPct <= 2.5) spreadScore = 85;
+    else if (spreadPct <= 5) spreadScore = 70;
+    else if (spreadPct <= 10) spreadScore = 45;
+    else spreadScore = 20;
+  }
+
+  // Composite: spread weighted high when available, else OI+vol equally
+  const score = spreadScore != null
+    ? Math.round(spreadScore * 0.5 + oiScore * 0.3 + volScore * 0.2)
+    : Math.round(oiScore * 0.6 + volScore * 0.4);
+
+  const grade = score >= 80 ? 'A' : score >= 55 ? 'B' : 'C';
+  return { grade, score, oiScore, volScore, spreadScore };
+}
+
+// Composite BuyScore: combines quality, theta safety, liquidity, expiry proximity.
+// Returns a 0-100 number plus the breakdown.
+//
+// Weights:
+//   - 40%  Quality (EV-based, from POT × R/R)
+//   - 30%  Theta Safety (lower decay = safer)
+//   - 20%  Liquidity (A/B/C grade scaled)
+//   - 10%  Proximity bonus (near-month = tradeable today, retail-friendly)
+function computeBuyScore({ qualityScore, thetaDecayPct, liquidityScore, dte }) {
+  // 1. Quality normalization. qualityScore is typically -50 to +150.
+  //    Map to 0-100 where 0 = quality -50 or less, 100 = quality 150 or more.
+  let qNorm = qualityScore == null ? 30 : Math.max(0, Math.min(100, ((qualityScore + 50) / 200) * 100));
+
+  // 2. ThetaSafety. Lower daily decay = safer. 0% decay = 100. 5%+/day = 0.
+  let thetaSafety = thetaDecayPct == null ? 50 : Math.max(0, Math.min(100, 100 - thetaDecayPct * 20));
+
+  // 3. Liquidity (already 0-100)
+  const liqNorm = liquidityScore != null ? liquidityScore : 50;
+
+  // 4. Proximity bonus: near-month (8-30 DTE) gets +10, sweet-spot 30-50 gets +5,
+  //    >50 DTE gets 0, <8 DTE gets 0 (gamma hell penalty already in theta).
+  let proxBonus = 0;
+  if (dte != null) {
+    if (dte >= 8 && dte <= 30) proxBonus = 100;
+    else if (dte > 30 && dte <= 50) proxBonus = 60;
+    else if (dte > 50) proxBonus = 30;
+    else proxBonus = 20;
+  }
+
+  const score = Math.round(qNorm * 0.4 + thetaSafety * 0.3 + liqNorm * 0.2 + proxBonus * 0.1);
+  const tier = score >= 75 ? 'A' : score >= 55 ? 'B' : 'C';
+  return {
+    buyScore: score,
+    tier,
+    breakdown: {
+      quality: Math.round(qNorm),
+      thetaSafety: Math.round(thetaSafety),
+      liquidity: Math.round(liqNorm),
+      proximity: Math.round(proxBonus),
+    },
+  };
+}
+
+// Build a single recommendation for a given stock signal AT a specific expiry.
+// Returns null on any failure (caller logs/aggregates).
+function buildPickForExpiry({ stockSignal, fyers, expiryChoice, isBullish, optionType, confidence, strikeOffset, chainResp }) {
+  // If we already have chainResp for this expiry (e.g. near-month was default fetch),
+  // skip refetch. Otherwise refetch with chosen expiry timestamp.
+  // NOTE: caller is responsible for getting chainResp at the right expiry.
+  if (!chainResp?.data) return { skip: 'no_chain_data' };
+
+  const analyzed = analyzeOptionChain(chainResp.data, expiryChoice.expiry);
+  if (analyzed.error) return { skip: 'analyze_failed', skipDetail: analyzed.error };
+
+  const spot = analyzed.spot || stockSignal.price;
+  if (!spot || spot <= 0) return { skip: 'no_spot' };
+
+  const step = strikeStep(spot);
+  const atmStrike = Math.round(spot / step) * step;
+  const offsetDirection = isBullish ? 1 : -1;
+  const targetStrike = atmStrike + (offsetDirection * strikeOffset * step);
+
+  const opt = findClosestStrike(analyzed.chain || [], targetStrike, optionType);
+  if (!opt) return { skip: 'strike_not_found' };
+  if (!isTradeable(opt)) return { skip: 'illiquid_or_high_iv' };
+
+  // Target/stop via delta scaling
+  const stockTarget = stockSignal.targets.swing.target;
+  const stockStop = stockSignal.targets.swing.stop;
+  const delta = opt.delta != null ? Math.abs(opt.delta) : 0.5;
+  const grossMove = Math.abs(stockTarget - stockSignal.price);
+  const grossStopMove = Math.abs(stockStop - stockSignal.price);
+  const finalOptTarget = Math.max(0.5, opt.ltp + delta * grossMove);
+  const finalOptStop = Math.max(0.5, opt.ltp - delta * grossStopMove);
+  const upside = finalOptTarget - opt.ltp;
+  const downside = opt.ltp - finalOptStop;
+  const riskReward = downside > 0 ? upside / downside : null;
+
+  // Probabilities
+  const T = expiryChoice.dte / 365;
+  const sigma = opt.iv != null ? opt.iv / 100 : null;
+  let pot = null, pop = null;
+  if (sigma && sigma > 0) {
+    pot = probabilityOfTouch(spot, stockTarget, T, sigma, isBullish ? 'above' : 'below');
+    pop = probabilityOfProfit(spot, opt.strike_price, opt.ltp, T, RISK_FREE_RATE, sigma, optionType);
+  }
+  let qualityScore = null;
+  if (pot != null && riskReward != null) {
+    const ev = pot * riskReward - (1 - pot);
+    qualityScore = Math.round(ev * 100);
+  }
+
+  // Theta decay percentage
+  const decayPct = thetaDecayPct(opt.theta, opt.ltp);
+
+  // Liquidity grade
+  const liq = gradeLiquidity(opt);
+
+  // BuyScore composite
+  const buy = computeBuyScore({
+    qualityScore,
+    thetaDecayPct: decayPct,
+    liquidityScore: liq.score,
+    dte: expiryChoice.dte,
+  });
+
+  return {
+    symbol: stockSignal.symbol,
+    side: 'BUY',
+    optionType,
+    strike: opt.strike_price,
+    expiry: expiryChoice.expiry,
+    expiryDate: expiryChoice.expiryDate ? formatExpiryShort(expiryChoice.expiryDate) : null,
+    expiryDays: parseFloat(expiryChoice.dte.toFixed(1)),
+    expiryZone: expiryChoice.zone,
+    spot,
+    premium: opt.ltp,
+    iv: opt.iv != null ? parseFloat(opt.iv.toFixed(1)) : null,
+    delta: opt.delta != null ? parseFloat(opt.delta.toFixed(2)) : null,
+    oi: opt.oi,
+    volume: opt.volume,
+    bid: opt.bid || null,
+    ask: opt.ask || null,
+    target: parseFloat(finalOptTarget.toFixed(2)),
+    stop: parseFloat(finalOptStop.toFixed(2)),
+    riskReward: riskReward != null ? parseFloat(riskReward.toFixed(2)) : null,
+    pot: pot != null ? parseFloat((pot * 100).toFixed(1)) : null,
+    pop: pop != null ? parseFloat((pop * 100).toFixed(1)) : null,
+    qualityScore,
+    thetaDecayPct: decayPct != null ? parseFloat(decayPct.toFixed(2)) : null,
+    liquidityGrade: liq.grade,
+    liquidityScore: liq.score,
+    buyScore: buy.buyScore,
+    tier: buy.tier,
+    buyScoreBreakdown: buy.breakdown,
+    stockSignal: stockSignal.signal,
+    stockConfidence: stockSignal.confidence,
+    stockConfidenceBreakdown: stockSignal.rationale || null,
+    stockPrice: stockSignal.price,
+    stockTarget,
+    stockStop,
+  };
+}
+
+// Generate option recommendations for one stock signal — NOW returns ARRAY of picks
+// (up to 2: near-month + next-month) so user sees both options for the same trade.
+// Returns either { picks: [...] } or { skip: <reason> } for aggregation.
 async function recommendForStock(stockSignal, fyers) {
   if (stockSignal.signal !== 'STRONG BUY' && stockSignal.signal !== 'STRONG SELL') {
     return { skip: 'not_strong_signal' };
@@ -138,16 +328,14 @@ async function recommendForStock(stockSignal, fyers) {
   const isBullish = stockSignal.signal === 'STRONG BUY';
   const optionType = isBullish ? 'CE' : 'PE';
   const confidence = stockSignal.confidence || 0;
-  const timeframe = confidence >= 85 ? 'weekly' : 'monthly';
   const strikeOffset = confidence >= 85 ? 0 : 1;
   const fyersSym = `NSE:${stockSignal.symbol}-EQ`;
 
-  // Initial chain fetch (default expiry)
-  let chainResp;
+  // Step 1: fetch default chain (Fyers returns nearest expiry by default, plus expiryData[])
+  let defaultChainResp;
   try {
-    chainResp = await fetchOptionChain(fyers, fyersSym, 30);
+    defaultChainResp = await fetchOptionChain(fyers, fyersSym, 30);
   } catch (e) {
-    // Capture error for debugging — first-of-batch sees console output
     if (!global.__optChainErrLogged) {
       console.error('[optionScanner] fetchOptionChain threw for', fyersSym, ':', e.message);
       global.__optChainErrLogged = true;
@@ -155,105 +343,46 @@ async function recommendForStock(stockSignal, fyers) {
     }
     return { skip: 'chain_fetch_failed', skipDetail: e.message };
   }
-  if (chainResp?.error || !chainResp?.data) {
-    return { skip: 'no_chain_data', skipDetail: chainResp?.error || 'no data' };
+  if (defaultChainResp?.error || !defaultChainResp?.data) {
+    return { skip: 'no_chain_data', skipDetail: defaultChainResp?.error || 'no data' };
   }
 
-  // Pick expiry with death-zone awareness
-  const expiryChoice = pickExpiry(chainResp.data.expiryData || [], timeframe, confidence);
-  if (!expiryChoice) return { skip: 'no_optimal_expiry' };
+  // Step 2: pick BOTH near-month and next-month expiries
+  const { nearMonth, nextMonth } = pickExpiries(defaultChainResp.data.expiryData || []);
+  if (!nearMonth && !nextMonth) return { skip: 'no_optimal_expiry' };
 
-  // Refetch at chosen expiry if different from default
-  let rawData = chainResp.data;
-  const defaultExpiry = chainResp.data.expiryData?.[0]?.expiry;
-  if (expiryChoice.expiry !== defaultExpiry) {
-    try {
-      const r = await fetchOptionChain(fyers, fyersSym, 30, expiryChoice.expiry);
-      if (r?.data) rawData = r.data;
-    } catch (_) { /* fall back */ }
+  const defaultExpirySec = defaultChainResp.data.expiryData?.[0]?.expiry;
+
+  // Step 3: for each candidate expiry, ensure we have the right chain data
+  const picks = [];
+
+  for (const choice of [nearMonth, nextMonth]) {
+    if (!choice) continue;
+
+    let chainResp = defaultChainResp;
+    // If choice.expiry differs from default, refetch
+    if (choice.expiry !== defaultExpirySec) {
+      try {
+        const r = await fetchOptionChain(fyers, fyersSym, 30, choice.expiry);
+        if (r?.data) chainResp = r;
+        else continue; // can't fetch this expiry — skip silently
+      } catch (_) {
+        continue;
+      }
+    }
+
+    const pick = buildPickForExpiry({
+      stockSignal, fyers, expiryChoice: choice,
+      isBullish, optionType, confidence, strikeOffset,
+      chainResp,
+    });
+    if (pick && !pick.skip) {
+      picks.push(pick);
+    }
   }
 
-  // Run through analyzeOptionChain to get spot + Greeks-enriched rows
-  const analyzed = analyzeOptionChain(rawData, expiryChoice.expiry);
-  if (analyzed.error) return { skip: 'analyze_failed' };
-
-  const spot = analyzed.spot || stockSignal.price;
-  if (!spot || spot <= 0) return { skip: 'no_spot' };
-
-  // Pick strike
-  const step = strikeStep(spot);
-  const atmStrike = Math.round(spot / step) * step;
-  const offsetDirection = isBullish ? 1 : -1;
-  const targetStrike = atmStrike + (offsetDirection * strikeOffset * step);
-
-  const opt = findClosestStrike(analyzed.chain || [], targetStrike, optionType);
-  if (!opt) return { skip: 'strike_not_found' };
-  if (!isTradeable(opt)) return { skip: 'illiquid_or_high_iv' };
-
-  // Compute target/stop on option premium via delta scaling
-  const stockTarget = stockSignal.targets.swing.target;
-  const stockStop = stockSignal.targets.swing.stop;
-  const delta = opt.delta != null ? Math.abs(opt.delta) : 0.5;
-  const expectedTargetMove = stockTarget - stockSignal.price;
-  const expectedStopMove = stockStop - stockSignal.price;
-
-  const grossMove = Math.abs(expectedTargetMove);
-  const grossStopMove = Math.abs(expectedStopMove);
-  const finalOptTarget = Math.max(0.5, opt.ltp + delta * grossMove);
-  const finalOptStop = Math.max(0.5, opt.ltp - delta * grossStopMove);
-
-  const upside = finalOptTarget - opt.ltp;
-  const downside = opt.ltp - finalOptStop;
-  const riskReward = downside > 0 ? upside / downside : null;
-
-  // Probability calculations (Phase 7)
-  const T = expiryChoice.dte / 365;
-  const sigma = opt.iv != null ? opt.iv / 100 : null;
-  let pot = null, pop = null;
-  if (sigma && sigma > 0) {
-    pot = probabilityOfTouch(
-      spot, stockTarget, T, sigma,
-      isBullish ? 'above' : 'below'
-    );
-    pop = probabilityOfProfit(
-      spot, opt.strike_price, opt.ltp, T, RISK_FREE_RATE, sigma, optionType
-    );
-  }
-
-  let qualityScore = null;
-  if (pot != null && riskReward != null) {
-    const ev = pot * riskReward - (1 - pot);
-    qualityScore = Math.round(ev * 100);
-  }
-
-  return {
-    symbol: stockSignal.symbol,
-    side: 'BUY',
-    optionType,
-    strike: opt.strike_price,
-    expiry: expiryChoice.expiry,
-    expiryDays: parseFloat(expiryChoice.dte.toFixed(1)),
-    expiryZone: expiryChoice.zone,
-    timeframe,
-    spot,
-    premium: opt.ltp,
-    iv: opt.iv != null ? parseFloat(opt.iv.toFixed(1)) : null,
-    delta: opt.delta != null ? parseFloat(opt.delta.toFixed(2)) : null,
-    oi: opt.oi,
-    volume: opt.volume,
-    target: parseFloat(finalOptTarget.toFixed(2)),
-    stop: parseFloat(finalOptStop.toFixed(2)),
-    riskReward: riskReward != null ? parseFloat(riskReward.toFixed(2)) : null,
-    pot: pot != null ? parseFloat((pot * 100).toFixed(1)) : null,
-    pop: pop != null ? parseFloat((pop * 100).toFixed(1)) : null,
-    qualityScore,
-    stockSignal: stockSignal.signal,
-    stockConfidence: stockSignal.confidence,
-    stockConfidenceBreakdown: stockSignal.rationale || null,
-    stockPrice: stockSignal.price,
-    stockTarget,
-    stockStop,
-  };
+  if (picks.length === 0) return { skip: 'all_picks_filtered' };
+  return { picks };
 }
 
 // Main scan: takes equity scanner results, produces option recommendations.
@@ -269,8 +398,8 @@ async function scanOptions(scannerResults, fyers) {
 
   const concurrency = 3;
   const recs = [];
-  const skipCounts = {}; // reason → count
-  const skipDetails = {}; // reason → first error message we saw
+  const skipCounts = {};
+  const skipDetails = {};
   for (let i = 0; i < top.length; i += concurrency) {
     const batch = top.slice(i, i + concurrency);
     const results = await Promise.allSettled(
@@ -286,8 +415,9 @@ async function scanOptions(scannerResults, fyers) {
         if (r.value.skipDetail && !skipDetails[r.value.skip]) {
           skipDetails[r.value.skip] = r.value.skipDetail;
         }
-      } else {
-        recs.push(r.value);
+      } else if (Array.isArray(r.value.picks)) {
+        // Phase 11: each stock can yield 1-2 picks (near + next month). Flatten.
+        for (const p of r.value.picks) recs.push(p);
       }
     }
     if (i + concurrency < top.length) {
@@ -295,16 +425,22 @@ async function scanOptions(scannerResults, fyers) {
     }
   }
 
-  // Sort by qualityScore (EV-based)
+  // Sort by BuyScore (the Phase 11 composite) descending, then quality, then conf.
+  // BuyScore weighs Quality(EV) + ThetaSafety + Liquidity + ProximityBonus.
   recs.sort((a, b) => {
+    const ba = a.buyScore ?? -999;
+    const bb = b.buyScore ?? -999;
+    if (ba !== bb) return bb - ba;
     const qa = a.qualityScore ?? -999;
     const qb = b.qualityScore ?? -999;
     if (qa !== qb) return qb - qa;
-    const pa = a.pot ?? 0;
-    const pb = b.pot ?? 0;
-    if (pa !== pb) return pb - pa;
     return (b.stockConfidence || 0) - (a.stockConfidence || 0);
   });
+
+  // Tier counts for header
+  const tierA = recs.filter(r => r.tier === 'A').length;
+  const tierB = recs.filter(r => r.tier === 'B').length;
+  const tierC = recs.filter(r => r.tier === 'C').length;
 
   return {
     recommendations: recs,
@@ -313,8 +449,9 @@ async function scanOptions(scannerResults, fyers) {
       strongBuyCount: filtered.filter(f => f.signal === 'STRONG BUY').length,
       strongSellCount: filtered.filter(f => f.signal === 'STRONG SELL').length,
       recommendationsReturned: recs.length,
+      tierA, tierB, tierC,
       skipCounts,
-      skipDetails, // first error message per reason — helps diagnose API failures
+      skipDetails,
     },
   };
 }

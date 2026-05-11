@@ -198,10 +198,24 @@ function probabilityOfProfit(S, strike, premium, T, r, sigma, type) {
 }
 
 
+// Daily theta decay as a percentage of premium.
+// Returns the fraction of premium that will be lost per calendar day, assuming
+// price/IV stay constant. At 5 DTE, ATM options can lose 5-8%/day. At 50 DTE,
+// usually 0.3-0.7%/day. We use this in the BuyScore "ThetaSafety" component.
+//
+// theta from bsGreeks() is ALREADY per-day (negative for long options).
+function thetaDecayPct(theta, premium) {
+  if (theta == null || !premium || premium <= 0) return null;
+  const dailyThetaAbs = Math.abs(theta);
+  return (dailyThetaAbs / premium) * 100;
+}
+
+
 module.exports = {
   RISK_FREE_RATE,
   normPDF, normCDF,
   bsPrice, bsGreeks, impliedVol,
   yearsToExpiry, enrichOption,
   probabilityOfTouch, probabilityOfProfit,
+  thetaDecayPct,
 };
