@@ -2110,6 +2110,7 @@ async function loadOptionScanner(force) {
     // Build skip-reason breakdown if available
     const dq = data.dataQuality;
     let skipBreakdownHtml = '';
+    let skipDebugHtml = '';
     if (dq && dq.skipCounts) {
       const skipMap = {
         no_optimal_expiry: 'no expiry in 23-45d sweet spot',
@@ -2133,6 +2134,18 @@ async function loadOptionScanner(force) {
           </div>
         `;
       }
+      // If we have skipDetails, show first failure detail (helps debugging)
+      if (dq.skipDetails && Object.keys(dq.skipDetails).length > 0) {
+        const detailLines = Object.entries(dq.skipDetails)
+          .map(([k, v]) => `<div><strong style="color:var(--hold)">${skipMap[k] || k}:</strong> <code style="font-size:10px">${v}</code></div>`)
+          .join('');
+        skipDebugHtml = `
+          <div style="margin-top:10px;padding:10px 12px;background:rgba(255,184,0,.06);border-left:2px solid var(--hold);border-radius:4px;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--ink-3)">
+            <div style="color:var(--hold);font-weight:600;margin-bottom:6px">DEBUG — first error per skip reason:</div>
+            ${detailLines}
+          </div>
+        `;
+      }
     }
 
     if (!data.recommendations || data.recommendations.length === 0) {
@@ -2142,7 +2155,8 @@ async function loadOptionScanner(force) {
           <br><br>
           ${dq ? `${dq.stockSignalsConsidered} stocks had strong equity signals (≥70 conf), but all were filtered out.` : 'Run the equity scanner first.'}
           ${skipBreakdownHtml}
-          <br><br>
+          ${skipDebugHtml}
+          <br>
           <span style="font-size:11px;color:var(--ink-3)">Most common cause: market in death-zone window (8-22 days before monthly expiry). Wait for next monthly cycle or check pre-market for sentiment instead.</span>
         </div>
       `;
@@ -2579,7 +2593,7 @@ function renderIntraday(data) {
       </div>
       <div>
         <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em">MAX PAIN · PCR</div>
-        <div style="font-size:16px;margin-top:4px">${fmt0(data.options.maxPain)} · <span style="color:var(--ink-3);font-size:13px">PCR ${data.options.pcr ? data.options.pcr.toFixed(2) : '—'}</span></div>
+        <div style="font-size:16px;margin-top:4px">${fmt0(data.options.maxPain)} · <span style="color:var(--ink-3);font-size:13px">PCR ${data.options.pcr && data.options.pcr.pcrOI != null ? data.options.pcr.pcrOI.toFixed(2) : '—'}</span></div>
       </div>
     </div>
   ` : `<div style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">Option chain unavailable (market closed or fetch error)</div>`;
