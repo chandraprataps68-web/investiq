@@ -2183,23 +2183,43 @@ async function loadOptionScanner(force) {
     const topPick = data.recommendations[0];
     let heroHtml = '';
     if (topPick && topPick.tier === 'A') {
+      const heroTargetPct = topPick.target != null && topPick.premium > 0
+        ? ((topPick.target - topPick.premium) / topPick.premium * 100) : null;
+      const heroStopPct = topPick.stop != null && topPick.premium > 0
+        ? ((topPick.stop - topPick.premium) / topPick.premium * 100) : null;
       heroHtml = `
-        <div style="margin-bottom:18px;padding:18px 22px;background:rgba(78,206,121,.08);border-left:3px solid var(--buy);border-radius:6px">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--buy);letter-spacing:0.12em;margin-bottom:8px">★ HIGHEST CONVICTION PICK</div>
-          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:600;color:var(--ink-1)">
+        <div style="margin-bottom:18px;padding:20px 24px;background:rgba(78,206,121,.08);border-left:3px solid var(--buy);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--buy);letter-spacing:0.12em;margin-bottom:10px">★ HIGHEST CONVICTION PICK · BuyScore ${topPick.buyScore}</div>
+          <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:600;color:var(--ink-1)">
               ${topPick.symbol} ${topPick.strike} ${topPick.optionType}
-              <span style="font-size:14px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-left:8px">${topPick.expiryDate} (${topPick.expiryDays}d)</span>
             </div>
-            <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink-2)">
-              @ ₹${topPick.premium}
-              · POT <span style="color:var(--buy)">${topPick.pot}%</span>
-              · Liq <span style="color:var(--buy)">${topPick.liquidityGrade}</span>
-              · BuyScore <span style="color:var(--buy);font-weight:600">${topPick.buyScore}</span>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink-3)">
+              ${topPick.expiryDate} (${topPick.expiryDays}d) · ${topPick.stockSignal} on ${topPick.symbol} · stock conf ${topPick.stockConfidence}
             </div>
           </div>
-          <div style="margin-top:8px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace">
-            Target ₹${topPick.target} · Stop ₹${topPick.stop} · R/R ${topPick.riskReward}x · ${topPick.stockSignal} on ${topPick.symbol} (conf ${topPick.stockConfidence})
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;font-family:'JetBrains Mono',monospace;font-size:13px">
+            <div>
+              <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">ENTRY</div>
+              <div style="font-size:18px;font-weight:600;color:var(--ink-1)">₹${topPick.premium}</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">TARGET</div>
+              <div style="font-size:18px;font-weight:600;color:var(--buy)">₹${topPick.target}</div>
+              <div style="font-size:10px;color:var(--buy);margin-top:2px">${heroTargetPct != null ? '+' + heroTargetPct.toFixed(0) + '% gain' : ''}</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">STOP</div>
+              <div style="font-size:18px;font-weight:600;color:var(--sell)">₹${topPick.stop}</div>
+              <div style="font-size:10px;color:var(--sell);margin-top:2px">${heroStopPct != null ? heroStopPct.toFixed(0) + '% loss' : ''}</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">R/R · POT · LIQ</div>
+              <div style="font-size:14px;color:var(--ink-2);line-height:1.4">
+                <strong>${topPick.riskReward}x</strong> · <strong style="color:var(--buy)">${topPick.pot}%</strong> · <strong style="color:var(--buy)">${topPick.liquidityGrade}</strong>
+              </div>
+              <div style="font-size:10px;color:var(--ink-3);margin-top:2px">θ ${topPick.thetaDecayPct}%/day · IV ${topPick.iv}%</div>
+            </div>
           </div>
         </div>
       `;
@@ -2214,6 +2234,9 @@ async function loadOptionScanner(force) {
             <th title="Expiry month/date">Expiry</th>
             <th title="Days to expiry">DTE</th>
             <th>Premium</th>
+            <th title="Exit target on option premium · delta-scaled from stock target">Target</th>
+            <th title="Stop loss on option premium · delta-scaled from stock stop">Stop</th>
+            <th title="Reward / Risk ratio">R/R</th>
             <th title="Probability of Touch — chance stock hits target before expiry">POT</th>
             <th title="Theta decay per day (% of premium lost daily, all else equal)">Theta/d</th>
             <th title="Liquidity grade: A = tight spreads + deep OI, C = thin">Liq</th>
@@ -2244,7 +2267,11 @@ async function loadOptionScanner(force) {
             const liqColor = r.liquidityGrade === 'A' ? 'var(--buy)'
               : r.liquidityGrade === 'B' ? 'var(--hold)'
               : 'var(--sell)';
-            // BuyScore breakdown tooltip
+            // % return at target and % loss at stop (on premium basis)
+            const targetPct = r.target != null && r.premium > 0
+              ? ((r.target - r.premium) / r.premium * 100) : null;
+            const stopPct = r.stop != null && r.premium > 0
+              ? ((r.stop - r.premium) / r.premium * 100) : null;
             const bd = r.buyScoreBreakdown || {};
             const buyScoreTitle = `Quality ${bd.quality}/100 · Theta safety ${bd.thetaSafety}/100 · Liquidity ${bd.liquidity}/100 · Proximity ${bd.proximity}/100`;
             return `
@@ -2255,6 +2282,9 @@ async function loadOptionScanner(force) {
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.expiryDate || '—'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-3);font-size:11px">${r.expiryDays}d</td>
                 <td style="font-family:'JetBrains Mono',monospace">₹${r.premium}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--buy)">₹${r.target ?? '—'}${targetPct != null ? `<span style="font-size:10px;color:var(--ink-3);margin-left:4px">+${targetPct.toFixed(0)}%</span>` : ''}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--sell)">₹${r.stop ?? '—'}${stopPct != null ? `<span style="font-size:10px;color:var(--ink-3);margin-left:4px">${stopPct.toFixed(0)}%</span>` : ''}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.riskReward != null ? r.riskReward + 'x' : '—'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:${potColor};font-weight:600">${r.pot != null ? r.pot + '%' : '—'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:${thetaColor}">${r.thetaDecayPct != null ? r.thetaDecayPct + '%' : '—'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:${liqColor};font-weight:600;text-align:center">${r.liquidityGrade || '—'}</td>
@@ -2270,12 +2300,14 @@ async function loadOptionScanner(force) {
       </div>
       <div style="margin-top:14px;font-size:11px;color:var(--ink-3);line-height:1.7">
         <strong style="color:var(--ink-2)">How to read this table:</strong><br>
+        · <strong>Premium</strong> = current option price you pay to BUY. <strong>Target</strong>/<strong>Stop</strong> = exit prices on the premium (delta-scaled from stock targets). %s next to them = your return/loss on capital deployed.<br>
+        · <strong>R/R</strong> = Reward / Risk ratio. 2x = win twice what you risk.<br>
         · <strong>BuyScore</strong> (0-100, sort priority): combines Quality (40%) + Theta Safety (30%) + Liquidity (20%) + Proximity (10%). Hover for breakdown.<br>
         · <strong>Tier</strong>: <span style="color:var(--buy)">A ≥75</span> high conviction · <span style="color:var(--hold)">B 55-74</span> moderate · <span style="color:var(--ink-3)">C &lt;55</span> speculative.<br>
         · <strong>POT</strong> = Probability of Touch (chance stock hits target before expiry).<br>
         · <strong>Theta/d</strong> = % of premium lost per day. <span style="color:var(--buy)">&lt;1%</span> safe · <span style="color:var(--hold)">1-3%</span> watch · <span style="color:var(--sell)">&gt;3%</span> rapid burn.<br>
         · <strong>Liq</strong>: A=tight spreads/deep OI, B=acceptable, C=thin.<br>
-        · <strong>Expiry</strong> shown as month/date. Near-month = easier to trade, more theta. Next month = better math, may need to search "Jun 25" in your broker.<br>
+        · <strong>Expiry</strong> shown as month/date. Near-month = easier to trade, more theta. Next month = better math, may need to search the exact contract in your broker.<br>
         · Hover any row for upstream stock confidence breakdown.
       </div>
     `;
