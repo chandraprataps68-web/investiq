@@ -147,9 +147,17 @@ async function recommendForStock(stockSignal, fyers) {
   try {
     chainResp = await fetchOptionChain(fyers, fyersSym, 30);
   } catch (e) {
-    return { skip: 'chain_fetch_failed' };
+    // Capture error for debugging — first-of-batch sees console output
+    if (!global.__optChainErrLogged) {
+      console.error('[optionScanner] fetchOptionChain threw for', fyersSym, ':', e.message);
+      global.__optChainErrLogged = true;
+      setTimeout(() => { global.__optChainErrLogged = false; }, 60_000);
+    }
+    return { skip: 'chain_fetch_failed', skipDetail: e.message };
   }
-  if (chainResp?.error || !chainResp?.data) return { skip: 'no_chain_data' };
+  if (chainResp?.error || !chainResp?.data) {
+    return { skip: 'no_chain_data', skipDetail: chainResp?.error || 'no data' };
+  }
 
   // Pick expiry with death-zone awareness
   const expiryChoice = pickExpiry(chainResp.data.expiryData || [], timeframe, confidence);
@@ -262,6 +270,7 @@ async function scanOptions(scannerResults, fyers) {
   const concurrency = 3;
   const recs = [];
   const skipCounts = {}; // reason → count
+  const skipDetails = {}; // reason → first error message we saw
   for (let i = 0; i < top.length; i += concurrency) {
     const batch = top.slice(i, i + concurrency);
     const results = await Promise.allSettled(
@@ -274,6 +283,9 @@ async function scanOptions(scannerResults, fyers) {
       }
       if (r.value.skip) {
         skipCounts[r.value.skip] = (skipCounts[r.value.skip] || 0) + 1;
+        if (r.value.skipDetail && !skipDetails[r.value.skip]) {
+          skipDetails[r.value.skip] = r.value.skipDetail;
+        }
       } else {
         recs.push(r.value);
       }
@@ -302,6 +314,7 @@ async function scanOptions(scannerResults, fyers) {
       strongSellCount: filtered.filter(f => f.signal === 'STRONG SELL').length,
       recommendationsReturned: recs.length,
       skipCounts,
+      skipDetails, // first error message per reason — helps diagnose API failures
     },
   };
 }

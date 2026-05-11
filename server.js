@@ -1092,6 +1092,25 @@ app.post('/api/backtest/verify', async (req, res) => {
 //  HEALTH
 // ═══════════════════════════════════════════════════════════
 
+// Debug: inspect raw Fyers quote response for an index/symbol.
+// Useful for diagnosing why pre-market Fyers fallback isn't populating cues.
+// GET /api/debug/quote/NSE:NIFTY50-INDEX
+app.get('/api/debug/quote/:symbol', requireAuth, async (req, res) => {
+  try {
+    const sym = req.params.symbol;
+    const fyers = getFyers();
+    const r = await fyers.getQuotes([sym]);
+    res.json({
+      requestedSymbol: sym,
+      rawResponse: r,
+      extractedV: r?.d?.[0]?.v || null,
+      fields: r?.d?.[0]?.v ? Object.keys(r.d[0].v) : null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/health', (req, res) => {
   // Cron-like trigger: check if it's snapshot/verification window
   // (fire-and-forget, doesn't block the response).

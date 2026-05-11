@@ -88,53 +88,17 @@ async function fetchYahooChart(yahooSym) {
   }
 }
 
-// ─── Fyers fallback for India-specific indices ─────────
-// When Stooq and Yahoo both fail (cloud IP blocks), Fyers is our ground truth
-// for Indian indices. This is critical for pre-market because GIFT Nifty,
-// India VIX, etc. are the highest-weighted cues in computeBias.
-//
-// Fyers symbol map for cues we can resolve internally:
-const FYERS_CUE_MAP = {
-  'GIFT_NIFTY': 'NSE:NIFTY50-INDEX',    // proxy: actual GIFT Nifty differs slightly
-  'VIX':        'NSE:INDIAVIX-INDEX',    // India VIX as VIX proxy
-  'BANKNIFTY':  'NSE:NIFTYBANK-INDEX',   // already available
-};
-
-async function fetchFyersIndex(fyersFetcher, cueId) {
-  const fyersSym = FYERS_CUE_MAP[cueId];
-  if (!fyersSym || !fyersFetcher) return { error: 'no fyers mapping' };
-  try {
-    const q = await fyersFetcher(fyersSym);
-    if (!q || q.lp == null) return { error: 'no fyers quote' };
-    // Fyers returns lp (last price), ch (change), chp (change %), prev_close_price
-    return {
-      price: q.lp,
-      prevClose: q.prev_close_price || (q.lp - (q.ch || 0)),
-      change: q.ch ?? 0,
-      changePct: q.chp ?? 0,
-      source: 'fyers',
-    };
-  } catch (err) {
-    return { error: err.message, source: 'fyers' };
-  }
-}
-
-// ─── Combined fetch: try Stooq → Yahoo → Fyers (for India indices) ──
-async function fetchGlobalCues(fyersFetcher = null) {
+// ─── Combined fetch: try Stooq → Yahoo ─────
+// Fyers fallback for India indices happens in getPreMarketSnapshot AFTER this,
+// since it's only available when authenticated. See post-fetch fill block below.
+async function fetchGlobalCues() {
   const results = await Promise.all(
     GLOBAL_CUES.map(async (cue) => {
-      // Try Stooq
       const stooqSym = STOOQ_MAP[cue.yahoo];
       let data = stooqSym ? await fetchStooqQuote(stooqSym) : { error: 'no stooq mapping' };
-      // Try Yahoo
       if (data.error) {
         const yh = await fetchYahooChart(cue.yahoo);
         if (!yh.error) data = yh;
-      }
-      // Try Fyers (only works for India indices we have a mapping for)
-      if (data.error && fyersFetcher && FYERS_CUE_MAP[cue.id]) {
-        const fy = await fetchFyersIndex(fyersFetcher, cue.id);
-        if (!fy.error) data = fy;
       }
       return { ...cue, ...data };
     })
@@ -325,38 +289,56 @@ function computeBias({ globalCues, fiiDii }) {
 async function getPreMarketSnapshot(opts = {}) {
   const fyersIndexFetcher = opts.fyersIndexFetcher; // optional: async (fyersSym) => {lp, ch, chp}
 
-  // Pass fyersFetcher into fetchGlobalCues so Fyers can serve as 3rd fallback
-  // for Indian indices when Stooq/Yahoo are blocked (Render cloud IP issue).
   const [globalCues, news, fiiDii] = await Promise.all([
-    fetchGlobalCues(fyersIndexFetcher),
+    fetchGlobalCues(),
     fetchNews(),
     fetchFIIDII(),
   ]);
 
-  // If Fyers is available, fill in India-specific cues that Stooq/Yahoo struggle with
+  // Fyers fallback for India-specific cues that Stooq/Yahoo struggle with on Render.
+  // Critical: Fyers index quote API may return different field shapes. We try several
+  // and COMPUTE changePct from prev_close_price when chp is missing.
   if (fyersIndexFetcher) {
     const indexMap = {
-      'GIFT_NIFTY': 'NSE:NIFTY50-INDEX',
-      'VIX': 'NSE:INDIAVIX-INDEX', // Note: shows India VIX, not US VIX
+      'GIFT_NIFTY': { sym: 'NSE:NIFTY50-INDEX', renameTo: null },
+      'VIX':        { sym: 'NSE:INDIAVIX-INDEX', renameTo: 'India VIX' },
+      'BANKNIFTY':  { sym: 'NSE:NIFTYBANK-INDEX', renameTo: null }, // if BANKNIFTY is in GLOBAL_CUES
     };
-    await Promise.all(Object.entries(indexMap).map(async ([cueId, fyersSym]) => {
+    await Promise.all(Object.entries(indexMap).map(async ([cueId, cfg]) => {
       const cue = globalCues.find((c) => c.id === cueId);
-      if (!cue || !cue.error) return; // already have data
+      if (!cue) return; // not in GLOBAL_CUES list at all
+      // Already have working data from Stooq/Yahoo? Skip.
+      if (!cue.error && cue.changePct != null) return;
       try {
-        const q = await fyersIndexFetcher(fyersSym);
-        if (q && (q.lp != null || q.ltp != null)) {
-          const price = q.lp ?? q.ltp;
-          const change = q.ch;
-          const changePct = q.chp;
-          Object.assign(cue, {
-            price, change, changePct,
-            error: undefined,
-            source: 'fyers',
-          });
-          if (cueId === 'VIX') cue.name = 'India VIX'; // be honest about what we're showing
+        const q = await fyersIndexFetcher(cfg.sym);
+        if (!q) return;
+        const price = q.lp ?? q.ltp ?? q.last_price ?? null;
+        if (price == null) return;
+
+        // Try Fyers' provided changePct first, then compute from prev_close
+        let change = q.ch ?? q.change ?? null;
+        let changePct = q.chp ?? q.change_pct ?? null;
+        const prevClose = q.prev_close_price ?? q.prevClose ?? q.previous_close ?? null;
+
+        // If percentage isn't given but we have prev_close, compute it
+        if (changePct == null && prevClose != null && prevClose > 0) {
+          change = price - prevClose;
+          changePct = (change / prevClose) * 100;
         }
+        // Last fallback: if even prev_close missing, can't compute — leave as-is rather than 0
+        if (changePct == null) return; // don't pollute cue with fake 0%
+
+        Object.assign(cue, {
+          price,
+          prevClose,
+          change,
+          changePct,
+          error: undefined,
+          source: 'fyers',
+        });
+        if (cfg.renameTo) cue.name = cfg.renameTo;
       } catch (err) {
-        // keep cue.error as-is
+        // Keep cue.error as-is
       }
     }));
   }
