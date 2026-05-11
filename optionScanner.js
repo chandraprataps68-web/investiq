@@ -30,15 +30,22 @@ function strikeStep(price) {
 
 // Pick expiry from chain.expiries with awareness of theta decay zones.
 //
-// Theta decay accelerates non-linearly:
-//   - 0-7 DTE:   highest theta, gamma whipsaw — good for scalps if conf is very high
-//   - 8-22 DTE:  THE DEATH ZONE — theta eats premium fast, not enough time for swing move
-//   - 23-45 DTE: SWEET SPOT — moderate theta, time for thesis to play out
-//   - 46+ DTE:   too much premium paid for vol, vega exposure dominates
+// Theta decay zones (calibrated for Indian F&O stock options):
+//   - 0-7 DTE:    DANGER — extreme gamma whipsaw, never for swing
+//   - 8-14 DTE:   AVOID — theta accelerates hard, not enough time for thesis
+//   - 15-22 DTE:  THETA RISK — acceptable when nothing else available (typical
+//                 NSE stock options reality: June monthly not yet listed in early May)
+//   - 23-50 DTE:  OPTIMAL — moderate theta, time for thesis to play out
+//   - 51+ DTE:    HEAVY VEGA — too much premium paid for vol, lower delta sensitivity
 //
-// Strategy: STRICTLY prefer 23-45 DTE. Only allow weekly (<=7 DTE) if confidence ≥ 90.
-// If neither is available, return null — caller should skip this stock rather than
-// fall back to suboptimal expiries.
+// Strategy:
+//   1. If timeframe='weekly' AND confidence >= 90, allow 0-7 DTE for scalps
+//   2. Strongly prefer OPTIMAL zone (23-50 DTE)
+//   3. If OPTIMAL is empty, accept 15-22 DTE with a THETA_RISK tag (caller surfaces this)
+//   4. Refuse if only 0-14 DTE or 50+ DTE available
+//
+// This avoids the previous "0 recommendations" failure when next monthly cycle
+// isn't yet listed in Fyers' expiryData for stock options.
 function pickExpiry(expiries, timeframe, confidence) {
   const nowSec = Math.floor(Date.now() / 1000);
   const DAY = 86400;
@@ -54,31 +61,39 @@ function pickExpiry(expiries, timeframe, confidence) {
 
   if (future.length === 0) return null;
 
-  // If user asked for weekly AND confidence is very high, allow nearest expiry
+  // 1. Weekly scalp (very high conf only)
   if (timeframe === 'weekly' && confidence >= 90) {
     const weekly = future.find(e => e.daysOut <= 7);
     if (weekly) return { expiry: weekly.expiry, dte: weekly.daysOut, zone: 'WEEKLY_SCALP' };
   }
 
-  // Find expiry in STRICT sweet spot (23-45 DTE), preferring monthly
-  const sweetSpotMonthly = future.find(e =>
-    e.expiry_flag === 'M' && e.daysOut >= 23 && e.daysOut <= 45
+  // 2. OPTIMAL zone (23-50 DTE), prefer monthly
+  const sweetMonthly = future.find(e =>
+    e.expiry_flag === 'M' && e.daysOut >= 23 && e.daysOut <= 50
   );
-  if (sweetSpotMonthly) {
-    return { expiry: sweetSpotMonthly.expiry, dte: sweetSpotMonthly.daysOut, zone: 'OPTIMAL' };
+  if (sweetMonthly) {
+    return { expiry: sweetMonthly.expiry, dte: sweetMonthly.daysOut, zone: 'OPTIMAL' };
+  }
+  const sweetAny = future.find(e => e.daysOut >= 23 && e.daysOut <= 50);
+  if (sweetAny) {
+    return { expiry: sweetAny.expiry, dte: sweetAny.daysOut, zone: 'OPTIMAL' };
   }
 
-  // No monthly in sweet spot — accept any expiry in 23-45 DTE
-  const anyInZone = future.find(e => e.daysOut >= 23 && e.daysOut <= 45);
-  if (anyInZone) {
-    return { expiry: anyInZone.expiry, dte: anyInZone.daysOut, zone: 'OPTIMAL' };
+  // 3. THETA RISK zone (15-22 DTE) — acceptable last resort
+  // Common in early/mid month when next monthly isn't yet listed by NSE/Fyers
+  // for stock options. Caller should display warning prominently.
+  const thetaRiskMonthly = future.find(e =>
+    e.expiry_flag === 'M' && e.daysOut >= 15 && e.daysOut < 23
+  );
+  if (thetaRiskMonthly) {
+    return { expiry: thetaRiskMonthly.expiry, dte: thetaRiskMonthly.daysOut, zone: 'THETA_RISK' };
+  }
+  const thetaRiskAny = future.find(e => e.daysOut >= 15 && e.daysOut < 23);
+  if (thetaRiskAny) {
+    return { expiry: thetaRiskAny.expiry, dte: thetaRiskAny.daysOut, zone: 'THETA_RISK' };
   }
 
-  // STRICT REFUSAL: nothing in the sweet spot.
-  // Returning null causes the caller to skip this stock entirely. This is
-  // intentional honesty — better to recommend nothing than recommend a bad expiry.
-  // Common cause: standing in the death zone of the cycle (e.g. 8-22 days before
-  // expiry, with the next monthly 50+ days out).
+  // 4. Refuse — only 0-14 DTE (too risky) or 51+ DTE (too heavy in vega)
   return null;
 }
 

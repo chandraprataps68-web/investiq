@@ -88,16 +88,53 @@ async function fetchYahooChart(yahooSym) {
   }
 }
 
-// ─── Combined fetch: try Stooq, fall back to Yahoo ─────
-async function fetchGlobalCues() {
+// ─── Fyers fallback for India-specific indices ─────────
+// When Stooq and Yahoo both fail (cloud IP blocks), Fyers is our ground truth
+// for Indian indices. This is critical for pre-market because GIFT Nifty,
+// India VIX, etc. are the highest-weighted cues in computeBias.
+//
+// Fyers symbol map for cues we can resolve internally:
+const FYERS_CUE_MAP = {
+  'GIFT_NIFTY': 'NSE:NIFTY50-INDEX',    // proxy: actual GIFT Nifty differs slightly
+  'VIX':        'NSE:INDIAVIX-INDEX',    // India VIX as VIX proxy
+  'BANKNIFTY':  'NSE:NIFTYBANK-INDEX',   // already available
+};
+
+async function fetchFyersIndex(fyersFetcher, cueId) {
+  const fyersSym = FYERS_CUE_MAP[cueId];
+  if (!fyersSym || !fyersFetcher) return { error: 'no fyers mapping' };
+  try {
+    const q = await fyersFetcher(fyersSym);
+    if (!q || q.lp == null) return { error: 'no fyers quote' };
+    // Fyers returns lp (last price), ch (change), chp (change %), prev_close_price
+    return {
+      price: q.lp,
+      prevClose: q.prev_close_price || (q.lp - (q.ch || 0)),
+      change: q.ch ?? 0,
+      changePct: q.chp ?? 0,
+      source: 'fyers',
+    };
+  } catch (err) {
+    return { error: err.message, source: 'fyers' };
+  }
+}
+
+// ─── Combined fetch: try Stooq → Yahoo → Fyers (for India indices) ──
+async function fetchGlobalCues(fyersFetcher = null) {
   const results = await Promise.all(
     GLOBAL_CUES.map(async (cue) => {
+      // Try Stooq
       const stooqSym = STOOQ_MAP[cue.yahoo];
       let data = stooqSym ? await fetchStooqQuote(stooqSym) : { error: 'no stooq mapping' };
+      // Try Yahoo
       if (data.error) {
-        // Fall back to Yahoo chart endpoint
         const yh = await fetchYahooChart(cue.yahoo);
         if (!yh.error) data = yh;
+      }
+      // Try Fyers (only works for India indices we have a mapping for)
+      if (data.error && fyersFetcher && FYERS_CUE_MAP[cue.id]) {
+        const fy = await fetchFyersIndex(fyersFetcher, cue.id);
+        if (!fy.error) data = fy;
       }
       return { ...cue, ...data };
     })
@@ -288,8 +325,10 @@ function computeBias({ globalCues, fiiDii }) {
 async function getPreMarketSnapshot(opts = {}) {
   const fyersIndexFetcher = opts.fyersIndexFetcher; // optional: async (fyersSym) => {lp, ch, chp}
 
+  // Pass fyersFetcher into fetchGlobalCues so Fyers can serve as 3rd fallback
+  // for Indian indices when Stooq/Yahoo are blocked (Render cloud IP issue).
   const [globalCues, news, fiiDii] = await Promise.all([
-    fetchGlobalCues(),
+    fetchGlobalCues(fyersIndexFetcher),
     fetchNews(),
     fetchFIIDII(),
   ]);
