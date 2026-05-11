@@ -302,31 +302,49 @@ async function getPreMarketSnapshot(opts = {}) {
     const indexMap = {
       'GIFT_NIFTY': { sym: 'NSE:NIFTY50-INDEX', renameTo: null },
       'VIX':        { sym: 'NSE:INDIAVIX-INDEX', renameTo: 'India VIX' },
-      'BANKNIFTY':  { sym: 'NSE:NIFTYBANK-INDEX', renameTo: null }, // if BANKNIFTY is in GLOBAL_CUES
+      'BANKNIFTY':  { sym: 'NSE:NIFTYBANK-INDEX', renameTo: null },
     };
+    // Diagnostics: log first attempt of each batch so we can see what's failing
+    let logOnce = !global.__premarketFyersLogged;
+
     await Promise.all(Object.entries(indexMap).map(async ([cueId, cfg]) => {
       const cue = globalCues.find((c) => c.id === cueId);
-      if (!cue) return; // not in GLOBAL_CUES list at all
+      if (!cue) {
+        if (logOnce) console.log(`[premarket-fyers] cue ${cueId} not in GLOBAL_CUES — skipping`);
+        return;
+      }
       // Already have working data from Stooq/Yahoo? Skip.
-      if (!cue.error && cue.changePct != null) return;
+      if (!cue.error && cue.changePct != null) {
+        if (logOnce) console.log(`[premarket-fyers] cue ${cueId} already populated by Stooq/Yahoo — skipping`);
+        return;
+      }
       try {
         const q = await fyersIndexFetcher(cfg.sym);
-        if (!q) return;
+        if (logOnce) {
+          console.log(`[premarket-fyers] ${cueId} (${cfg.sym}) raw response:`, JSON.stringify(q));
+        }
+        if (!q) {
+          if (logOnce) console.log(`[premarket-fyers] ${cueId} got null/empty from fetcher`);
+          return;
+        }
         const price = q.lp ?? q.ltp ?? q.last_price ?? null;
-        if (price == null) return;
+        if (price == null) {
+          if (logOnce) console.log(`[premarket-fyers] ${cueId} no price field in response`);
+          return;
+        }
 
-        // Try Fyers' provided changePct first, then compute from prev_close
         let change = q.ch ?? q.change ?? null;
         let changePct = q.chp ?? q.change_pct ?? null;
         const prevClose = q.prev_close_price ?? q.prevClose ?? q.previous_close ?? null;
 
-        // If percentage isn't given but we have prev_close, compute it
         if (changePct == null && prevClose != null && prevClose > 0) {
           change = price - prevClose;
           changePct = (change / prevClose) * 100;
         }
-        // Last fallback: if even prev_close missing, can't compute — leave as-is rather than 0
-        if (changePct == null) return; // don't pollute cue with fake 0%
+        if (changePct == null) {
+          if (logOnce) console.log(`[premarket-fyers] ${cueId} no changePct and no prevClose — can't compute. price=${price}, q keys:`, Object.keys(q));
+          return;
+        }
 
         Object.assign(cue, {
           price,
@@ -337,10 +355,17 @@ async function getPreMarketSnapshot(opts = {}) {
           source: 'fyers',
         });
         if (cfg.renameTo) cue.name = cfg.renameTo;
+        if (logOnce) console.log(`[premarket-fyers] ${cueId} populated: price=${price}, changePct=${changePct.toFixed(2)}%`);
       } catch (err) {
-        // Keep cue.error as-is
+        if (logOnce) console.log(`[premarket-fyers] ${cueId} threw:`, err.message);
       }
     }));
+
+    // Suppress further logs for 5 min
+    if (logOnce) {
+      global.__premarketFyersLogged = true;
+      setTimeout(() => { global.__premarketFyersLogged = false; }, 5 * 60 * 1000);
+    }
   }
 
   const bias = computeBias({ globalCues, fiiDii });
