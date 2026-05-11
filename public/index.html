@@ -757,15 +757,32 @@ async function loadPreMarket(force) {
 
   // Bias card
   const biasEl = document.getElementById('bias-card');
-  const biasClass = (data.bias.bias || '').replace(/\s+/g, ' ').toLowerCase().includes('bull') ? 'bullish'
+  const isInsufficient = data.bias.bias === 'INSUFFICIENT_DATA';
+  const biasClass = isInsufficient ? 'neutral'
+    : (data.bias.bias || '').replace(/\s+/g, ' ').toLowerCase().includes('bull') ? 'bullish'
     : (data.bias.bias || '').toLowerCase().includes('bear') ? 'bearish' : 'neutral';
+  const dq = data.bias.dataQuality;
+  const biasLabel = isInsufficient ? 'INSUFFICIENT DATA' : data.bias.bias;
   biasEl.innerHTML = `
     <div class="bias-label">Next-day directional bias</div>
-    <div class="bias-value ${biasClass}">${data.bias.bias}</div>
-    <div class="bias-score mono">SCORE ${data.bias.score >= 0 ? '+' : ''}${data.bias.score} · ${data.bias.reasons.length} signal${data.bias.reasons.length === 1 ? '' : 's'}</div>
-    <div class="bias-reasons">
-      ${data.bias.reasons.map(r => `<div class="bias-reason">${r}</div>`).join('')}
-    </div>
+    <div class="bias-value ${biasClass}" style="${isInsufficient ? 'color:var(--hold);font-size:42px' : ''}">${biasLabel}</div>
+    ${isInsufficient ? `
+      <div style="margin-top:12px;padding:14px 16px;background:rgba(255,184,0,.08);border-left:3px solid var(--hold);border-radius:4px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--hold);letter-spacing:0.08em;margin-bottom:6px">⚠ DATA SOURCING DEGRADED</div>
+        <div style="font-size:13px;color:var(--ink-2);line-height:1.6">
+          Only <strong>${dq?.cuesAvailable || 0} of ${dq?.cuesTotal || 12}</strong> global cues are available.
+          ${dq?.fiiDiiAvailable ? 'FII/DII feed working.' : 'FII/DII also unavailable.'}
+          <br><br>
+          Bias cannot be computed reliably. Common causes: Yahoo/Stooq blocking cloud IPs,
+          market holiday in source country, or DNS hiccup. Try refresh in 5-10 minutes.
+        </div>
+      </div>
+    ` : `
+      <div class="bias-score mono">SCORE ${data.bias.score >= 0 ? '+' : ''}${data.bias.score} · ${data.bias.reasons.length} signal${data.bias.reasons.length === 1 ? '' : 's'} · ${dq?.cuesAvailable || 0}/${dq?.cuesTotal || 12} cues live</div>
+      <div class="bias-reasons">
+        ${data.bias.reasons.map(r => `<div class="bias-reason">${r}</div>`).join('')}
+      </div>
+    `}
     ${data.catalysts && data.catalysts.catalysts.length > 0 ? `
       <div style="margin-top:18px;padding:12px 16px;background:rgba(255,184,0,.08);border-left:3px solid var(--hold);border-radius:4px">
         <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--hold);letter-spacing:0.08em;margin-bottom:6px">⚠ NEWS CATALYST DETECTED</div>
@@ -866,7 +883,17 @@ async function loadScanner(universe, force) {
 function renderScanner(data) {
   // Summary
   const s = data.summary || {};
+  const verdictCount = (s.strongBuys || 0) + (s.buys || 0) + (s.holds || 0) + (s.sells || 0) + (s.strongSells || 0);
+  const universeLabel = data.universe === 'fno' ? 'F&O (212)'
+    : data.universe === 'nifty50' ? 'Nifty 50'
+    : data.universe === 'next50' ? 'Nifty Next 50'
+    : 'Nifty 100';
+  const universeSize = data.universeSize || (data.results || []).length;
   document.getElementById('scanner-summary').innerHTML = `
+    <div style="margin-bottom:10px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;letter-spacing:0.05em">
+      Scanned <strong style="color:var(--ink-2)">${universeSize}</strong> ${universeLabel} stocks · <strong style="color:var(--ink-2)">${verdictCount}</strong> verdicts produced
+      ${universeSize !== verdictCount ? ` · <span style="color:var(--hold)">${universeSize - verdictCount} skipped (insufficient history)</span>` : ''}
+    </div>
     <div class="grid grid-12">
       <div class="cue col-3" style="border-color:var(--buy);"><div class="cue-name">Strong Buy</div><div class="cue-price up">${s.strongBuys || 0}</div></div>
       <div class="cue col-3" style="border-color:rgba(0,200,150,.4);"><div class="cue-name">Buy</div><div class="cue-price up">${s.buys || 0}</div></div>
@@ -2080,8 +2107,45 @@ async function loadOptionScanner(force) {
       tableEl.innerHTML = '<div class="empty">Error: ' + data.error + '</div>';
       return;
     }
+    // Build skip-reason breakdown if available
+    const dq = data.dataQuality;
+    let skipBreakdownHtml = '';
+    if (dq && dq.skipCounts) {
+      const skipMap = {
+        no_optimal_expiry: 'no expiry in 23-45d sweet spot',
+        illiquid_or_high_iv: 'failed liquidity / IV > 60%',
+        strike_not_found: 'no nearby strike',
+        no_chain_data: 'option chain fetch failed',
+        chain_fetch_failed: 'option chain error',
+        analyze_failed: 'chain analysis failed',
+        no_spot: 'no spot price',
+        error: 'unknown error',
+      };
+      const skipEntries = Object.entries(dq.skipCounts)
+        .filter(([k, v]) => v > 0)
+        .map(([k, v]) => `${v} ${skipMap[k] || k}`)
+        .join(' · ');
+      if (skipEntries) {
+        skipBreakdownHtml = `
+          <div style="margin-top:6px;font-size:11px;color:var(--ink-3)">
+            From ${dq.stockSignalsConsidered} candidates: <strong style="color:var(--ink-2)">${dq.recommendationsReturned} passed</strong>
+            · skipped: ${skipEntries}
+          </div>
+        `;
+      }
+    }
+
     if (!data.recommendations || data.recommendations.length === 0) {
-      tableEl.innerHTML = '<div class="empty">No qualifying option setups right now. Run the equity scanner first; this scanner picks options for STRONG BUY/SELL stocks with confidence ≥ 70.</div>';
+      tableEl.innerHTML = `
+        <div class="empty" style="padding:30px">
+          <strong style="color:var(--ink-2)">No qualifying option setups right now.</strong>
+          <br><br>
+          ${dq ? `${dq.stockSignalsConsidered} stocks had strong equity signals (≥70 conf), but all were filtered out.` : 'Run the equity scanner first.'}
+          ${skipBreakdownHtml}
+          <br><br>
+          <span style="font-size:11px;color:var(--ink-3)">Most common cause: market in death-zone window (8-22 days before monthly expiry). Wait for next monthly cycle or check pre-market for sentiment instead.</span>
+        </div>
+      `;
       summaryEl.textContent = `0 recommendations · cached ${data.fromCache ? 'yes' : 'no'}`;
       tsEl.textContent = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '—';
       return;
@@ -2091,6 +2155,7 @@ async function loadOptionScanner(force) {
       <span style="color:var(--sell)">${data.summary.bearish} PE (bearish)</span> ·
       ${data.summary.weekly} weekly · ${data.summary.monthly} monthly
       ${data.fromCache ? ' · <span style="color:var(--ink-3)">cached</span>' : ''}
+      ${skipBreakdownHtml}
     `;
     tsEl.textContent = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '—';
 
