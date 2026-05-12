@@ -235,49 +235,67 @@ async function getHistoryShortKey(fyersSym, resolution = 'D', days = 365) {
   // CRITICAL: Fyers daily history has a 366-day max per request.
   // For longer ranges, we chunk and concatenate. For ≤365 days, single call.
   const MAX_DAYS_PER_REQUEST = resolution === 'D' ? 365 : 30;
-  const allCandles = [];
-  const nowSec = Math.floor(Date.now() / 1000);
-  const totalSec = days * 86400;
 
-  // Build chunked ranges from oldest to newest
-  let chunkEnd = nowSec;
-  let chunkStart = Math.max(nowSec - totalSec, nowSec - MAX_DAYS_PER_REQUEST * 86400);
+  // cont_flag is for FUTURES continuous contracts (commodities, index futures).
+  // For NSE equity symbols, NOT passing it is safer — some Fyers backends reject
+  // cont_flag on equity tickers, returning empty candles.
+  const isEquity = fyersSym.startsWith('NSE:') && fyersSym.endsWith('-EQ');
+  const isFutures = fyersSym.includes('FUT') || fyersSym.startsWith('MCX:');
 
-  while (chunkEnd > nowSec - totalSec) {
-    const r = await fyers.getHistory({
+  async function fetchChunk(withContFlag) {
+    const params = {
       symbol: fyersSym,
       resolution,
       date_format: 0,
       range_from: String(chunkStart),
       range_to: String(chunkEnd),
-      cont_flag: '1',
-    });
+    };
+    if (withContFlag) params.cont_flag = '1';
+    return await fyers.getHistory(params);
+  }
+
+  const allCandles = [];
+  const nowSec = Math.floor(Date.now() / 1000);
+  const totalSec = days * 86400;
+  let chunkEnd = nowSec;
+  let chunkStart = Math.max(nowSec - totalSec, nowSec - MAX_DAYS_PER_REQUEST * 86400);
+  let hadAnyError = false;
+
+  while (chunkEnd > nowSec - totalSec) {
+    // For futures, always send cont_flag=1.
+    // For equity, try WITHOUT cont_flag first; only retry WITH if no candles returned.
+    let r = await fetchChunk(isFutures); // futures: cont_flag=1, equity: no flag
+    if (r?.s !== 'ok' || !(r.candles?.length > 0)) {
+      // Retry once with opposite cont_flag setting (defensive against Fyers behavior changes)
+      if (isEquity) {
+        r = await fetchChunk(true); // try with cont_flag in case Fyers wants it
+      } else {
+        r = await fetchChunk(false); // try without
+      }
+    }
     if (r?.s !== 'ok') {
       const msg = r?.message || r?.s || 'unknown';
       const code = r?.code;
       console.error(`[fyers history ${fyersSym} chunk] ${msg} (code ${code})`);
-      // Only auto-clear token on confirmed auth errors
       if (code === -16 || code === -17 || code === -300 || code === -352) {
         console.error('[fyers] Token invalid, clearing');
         accessToken = '';
         tokenTime = 0;
         try { fs.unlinkSync(TOKEN_FILE); } catch (_) {}
       }
-      // Cache empty briefly so we don't hammer Fyers retrying
-      cacheSet(ck, [], 5 * 60 * 1000);
-      return [];
+      hadAnyError = true;
+      break; // stop chunking, return whatever we have so far
     }
     const chunk = (r.candles || []).map((c) => ({
       t: c[0], o: c[1], h: c[2], l: c[3], c: c[4], v: c[5],
     }));
-    // Prepend (older data goes first)
     allCandles.unshift(...chunk);
     if (chunkStart <= nowSec - totalSec) break;
     chunkEnd = chunkStart - 86400;
     chunkStart = Math.max(nowSec - totalSec, chunkEnd - MAX_DAYS_PER_REQUEST * 86400);
   }
 
-  // De-dupe by timestamp (chunks may overlap by a day at boundaries)
+  // De-dupe by timestamp
   const seen = new Set();
   const candles = allCandles.filter((c) => {
     if (seen.has(c.t)) return false;
@@ -285,7 +303,19 @@ async function getHistoryShortKey(fyersSym, resolution = 'D', days = 365) {
     return true;
   });
 
-  cacheSet(ck, candles, isMarketHours() ? 10 * 60 * 1000 : 60 * 60 * 1000);
+  // KEY FIX: don't poison cache with empty result on error.
+  // - On success: cache normally (10 min during market, 60 min off-hours)
+  // - On error with empty result: cache for only 30 seconds so we retry quickly
+  // - On error but partial data: cache short (60 sec) so we retry but don't hammer
+  let cacheTtl;
+  if (hadAnyError && candles.length === 0) {
+    cacheTtl = 30 * 1000;
+  } else if (hadAnyError) {
+    cacheTtl = 60 * 1000;
+  } else {
+    cacheTtl = isMarketHours() ? 10 * 60 * 1000 : 60 * 60 * 1000;
+  }
+  cacheSet(ck, candles, cacheTtl);
   return candles;
 }
 
@@ -478,7 +508,16 @@ app.get('/api/premarket', async (req, res) => {
         data.bias.confidenceImpact = cat.confidenceImpact;
       }
     }
-    cacheSet(ck, data, 5 * 60 * 1000);
+    // Cache TTL adaptive to data quality:
+    //   - Full or near-full data (≥6/12 cues): cache 5 min (default)
+    //   - Degraded (1-5 cues): cache 60 sec — retry sooner
+    //   - INSUFFICIENT_DATA (0 cues): cache 30 sec — retry very soon
+    // This prevents one bad fetch from poisoning the cache for 5 minutes.
+    const cuesLive = data.bias?.dataQuality?.cuesAvailable ?? 0;
+    let cacheTtl = 5 * 60 * 1000;
+    if (cuesLive === 0) cacheTtl = 30 * 1000;
+    else if (cuesLive < 6) cacheTtl = 60 * 1000;
+    cacheSet(ck, data, cacheTtl);
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1105,6 +1144,58 @@ app.get('/api/debug/quote/:symbol', requireAuth, async (req, res) => {
       rawResponse: r,
       extractedV: r?.d?.[0]?.v || null,
       fields: r?.d?.[0]?.v ? Object.keys(r.d[0].v) : null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Debug: flush in-memory cache entirely. Useful to recover from poisoned cache
+// after Fyers had a transient outage (empty history results cached for 5 min).
+// POST /api/debug/flush-cache
+app.post('/api/debug/flush-cache', requireAuth, (req, res) => {
+  const sizeBefore = cache.size;
+  cache.clear();
+  res.json({ ok: true, entriesCleared: sizeBefore });
+});
+
+// Debug: inspect raw Fyers history response (try with AND without cont_flag).
+// Useful when scanner returns "0 verdicts produced · 100 skipped (insufficient history)".
+// GET /api/debug/history/NSE:RELIANCE-EQ
+app.get('/api/debug/history/:symbol', requireAuth, async (req, res) => {
+  try {
+    const sym = decodeURIComponent(req.params.symbol);
+    const fyers = getFyers();
+    const now = Math.floor(Date.now() / 1000);
+    const params = {
+      symbol: sym,
+      resolution: 'D',
+      date_format: 0,
+      range_from: String(now - 90 * 86400),
+      range_to: String(now),
+    };
+    // Try without cont_flag
+    const r1 = await fyers.getHistory(params);
+    // Try with cont_flag
+    const r2 = await fyers.getHistory({ ...params, cont_flag: '1' });
+    res.json({
+      requestedSymbol: sym,
+      withoutContFlag: {
+        s: r1?.s,
+        code: r1?.code,
+        message: r1?.message,
+        candlesCount: r1?.candles?.length || 0,
+        sampleFirst: r1?.candles?.[0] || null,
+        sampleLast: r1?.candles?.[r1?.candles?.length - 1] || null,
+      },
+      withContFlag: {
+        s: r2?.s,
+        code: r2?.code,
+        message: r2?.message,
+        candlesCount: r2?.candles?.length || 0,
+        sampleFirst: r2?.candles?.[0] || null,
+        sampleLast: r2?.candles?.[r2?.candles?.length - 1] || null,
+      },
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

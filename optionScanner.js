@@ -16,6 +16,7 @@
 
 const { fetchOptionChain, analyzeOptionChain } = require('./fno');
 const { probabilityOfTouch, probabilityOfProfit, thetaDecayPct, RISK_FREE_RATE } = require('./greeks');
+const { getLotSize, computeCapitalRequired } = require('./lotsizes');
 
 // Indian stock options use 0.5/1/2.5/5/10/25/50/100 step sizes depending on price.
 function strikeStep(price) {
@@ -287,6 +288,8 @@ function buildPickForExpiry({ stockSignal, fyers, expiryChoice, isBullish, optio
     expiryZone: expiryChoice.zone,
     spot,
     premium: opt.ltp,
+    lotSize: getLotSize(stockSignal.symbol),
+    capitalRequired: computeCapitalRequired(stockSignal.symbol, opt.ltp),
     iv: opt.iv != null ? parseFloat(opt.iv.toFixed(1)) : null,
     delta: opt.delta != null ? parseFloat(opt.delta.toFixed(2)) : null,
     oi: opt.oi,
