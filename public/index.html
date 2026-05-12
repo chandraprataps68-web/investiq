@@ -2196,27 +2196,29 @@ async function loadOptionScanner(force) {
             </div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink-3)">
               ${topPick.expiryDate} (${topPick.expiryDays}d) · ${topPick.stockSignal} on ${topPick.symbol} · stock conf ${topPick.stockConfidence}
+              ${topPick.lotSize != null ? ` · lot ${topPick.lotSize.toLocaleString('en-IN')}` : ''}
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;font-family:'JetBrains Mono',monospace;font-size:13px">
-            <div>
-              <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">ENTRY</div>
-              <div style="font-size:18px;font-weight:600;color:var(--ink-1)">₹${topPick.premium}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;font-family:'JetBrains Mono',monospace;font-size:13px">
+            <div style="padding:10px 12px;background:rgba(255,255,255,.03);border-radius:4px">
+              <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">CAPITAL TO ENTER</div>
+              <div style="font-size:20px;font-weight:600;color:var(--ink-1)">${topPick.capitalRequired != null ? '₹' + topPick.capitalRequired.toLocaleString('en-IN') : '—'}</div>
+              <div style="font-size:10px;color:var(--ink-3);margin-top:2px">@ ₹${topPick.premium} per share × ${topPick.lotSize != null ? topPick.lotSize.toLocaleString('en-IN') : '?'}</div>
             </div>
-            <div>
-              <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">TARGET</div>
-              <div style="font-size:18px;font-weight:600;color:var(--buy)">₹${topPick.target}</div>
-              <div style="font-size:10px;color:var(--buy);margin-top:2px">${heroTargetPct != null ? '+' + heroTargetPct.toFixed(0) + '% gain' : ''}</div>
+            <div style="padding:10px 12px;background:rgba(78,206,121,.04);border-radius:4px">
+              <div style="font-size:10px;color:var(--buy);letter-spacing:0.06em;margin-bottom:4px">MAX PROFIT (target hit)</div>
+              <div style="font-size:20px;font-weight:600;color:var(--buy)">${topPick.capitalRequired != null && topPick.target != null && topPick.lotSize != null ? '+₹' + Math.round((topPick.target - topPick.premium) * topPick.lotSize).toLocaleString('en-IN') : '—'}</div>
+              <div style="font-size:10px;color:var(--buy);margin-top:2px">target ₹${topPick.target}${heroTargetPct != null ? ' · +' + heroTargetPct.toFixed(0) + '%' : ''}</div>
             </div>
-            <div>
-              <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">STOP</div>
-              <div style="font-size:18px;font-weight:600;color:var(--sell)">₹${topPick.stop}</div>
-              <div style="font-size:10px;color:var(--sell);margin-top:2px">${heroStopPct != null ? heroStopPct.toFixed(0) + '% loss' : ''}</div>
+            <div style="padding:10px 12px;background:rgba(255,107,107,.04);border-radius:4px">
+              <div style="font-size:10px;color:var(--sell);letter-spacing:0.06em;margin-bottom:4px">MAX LOSS (stop hit)</div>
+              <div style="font-size:20px;font-weight:600;color:var(--sell)">${topPick.capitalRequired != null && topPick.stop != null && topPick.lotSize != null ? '−₹' + Math.round((topPick.premium - topPick.stop) * topPick.lotSize).toLocaleString('en-IN') : '—'}</div>
+              <div style="font-size:10px;color:var(--sell);margin-top:2px">stop ₹${topPick.stop}${heroStopPct != null ? ' · ' + heroStopPct.toFixed(0) + '%' : ''}</div>
             </div>
-            <div>
+            <div style="padding:10px 12px;background:rgba(255,255,255,.03);border-radius:4px">
               <div style="font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-bottom:4px">R/R · POT · LIQ</div>
-              <div style="font-size:14px;color:var(--ink-2);line-height:1.4">
-                <strong>${topPick.riskReward}x</strong> · <strong style="color:var(--buy)">${topPick.pot}%</strong> · <strong style="color:var(--buy)">${topPick.liquidityGrade}</strong>
+              <div style="font-size:16px;color:var(--ink-2);line-height:1.4;font-weight:600">
+                <span>${topPick.riskReward}x</span> · <span style="color:var(--buy)">${topPick.pot}%</span> · <span style="color:var(--buy)">${topPick.liquidityGrade}</span>
               </div>
               <div style="font-size:10px;color:var(--ink-3);margin-top:2px">θ ${topPick.thetaDecayPct}%/day · IV ${topPick.iv}%</div>
             </div>
@@ -2234,6 +2236,8 @@ async function loadOptionScanner(force) {
             <th title="Expiry month/date">Expiry</th>
             <th title="Days to expiry">DTE</th>
             <th>Premium</th>
+            <th title="Lot size for this contract (NSE F&O specification)">Lot</th>
+            <th title="Total capital to enter one lot = premium × lot size">Capital</th>
             <th title="Exit target on option premium · delta-scaled from stock target">Target</th>
             <th title="Stop loss on option premium · delta-scaled from stock stop">Stop</th>
             <th title="Reward / Risk ratio">R/R</th>
@@ -2282,6 +2286,8 @@ async function loadOptionScanner(force) {
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.expiryDate || '—'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-3);font-size:11px">${r.expiryDays}d</td>
                 <td style="font-family:'JetBrains Mono',monospace">₹${r.premium}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-3);font-size:11px">${r.lotSize != null ? r.lotSize.toLocaleString('en-IN') : '—'}</td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-1);font-weight:600">${r.capitalRequired != null ? '₹' + r.capitalRequired.toLocaleString('en-IN') : '—'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--buy)">₹${r.target ?? '—'}${targetPct != null ? `<span style="font-size:10px;color:var(--ink-3);margin-left:4px">+${targetPct.toFixed(0)}%</span>` : ''}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--sell)">₹${r.stop ?? '—'}${stopPct != null ? `<span style="font-size:10px;color:var(--ink-3);margin-left:4px">${stopPct.toFixed(0)}%</span>` : ''}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2)">${r.riskReward != null ? r.riskReward + 'x' : '—'}</td>
