@@ -92,13 +92,25 @@ async function fetchYahooChart(yahooSym) {
 // Fyers fallback for India indices happens in getPreMarketSnapshot AFTER this,
 // since it's only available when authenticated. See post-fetch fill block below.
 async function fetchGlobalCues() {
+  const logOnce = !global.__cuesLogged;
+  if (logOnce) {
+    global.__cuesLogged = true;
+    setTimeout(() => { global.__cuesLogged = false; }, 5 * 60 * 1000);
+  }
+
   const results = await Promise.all(
     GLOBAL_CUES.map(async (cue) => {
       const stooqSym = STOOQ_MAP[cue.yahoo];
       let data = stooqSym ? await fetchStooqQuote(stooqSym) : { error: 'no stooq mapping' };
+      const stooqResult = data.error ? `FAIL(${data.error})` : `OK(${data.price})`;
+      let yahooResult = 'SKIPPED';
       if (data.error) {
         const yh = await fetchYahooChart(cue.yahoo);
+        yahooResult = yh.error ? `FAIL(${yh.error})` : `OK(${yh.price})`;
         if (!yh.error) data = yh;
+      }
+      if (logOnce) {
+        console.log(`[cues] ${cue.id.padEnd(11)} stooq=${stooqResult.padEnd(35)} yahoo=${yahooResult}`);
       }
       return { ...cue, ...data };
     })

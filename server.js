@@ -1187,17 +1187,23 @@ app.get('/api/debug/system-status', async (req, res) => {
     results.upstreams.stooq = { ok: false, error: e.message };
   }
 
-  // Test 4: Yahoo (secondary source)
+  // Test 4: Yahoo (secondary source) — parse actual response, not substring match
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const timer = setTimeout(() => ctrl.abort(), 8000);
     const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/^DJI?interval=1d&range=2d', { signal: ctrl.signal });
     clearTimeout(timer);
     const text = await r.text();
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch (_) {}
+    // The real success check: do we have actual chart data?
+    const hasData = parsed?.chart?.result?.[0]?.meta?.regularMarketPrice != null;
     results.upstreams.yahoo = {
-      ok: r.ok && text.length > 100 && !text.includes('error'),
+      ok: r.ok && hasData,
       status: r.status,
-      sampleResponse: text.substring(0, 200),
+      hasData,
+      sampleSymbol: parsed?.chart?.result?.[0]?.meta?.symbol || null,
+      samplePrice: parsed?.chart?.result?.[0]?.meta?.regularMarketPrice || null,
     };
   } catch (e) {
     results.upstreams.yahoo = { ok: false, error: e.message };
