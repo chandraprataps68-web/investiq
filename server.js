@@ -1131,6 +1131,101 @@ app.post('/api/backtest/verify', async (req, res) => {
 //  HEALTH
 // ═══════════════════════════════════════════════════════════
 
+// Comprehensive system status — tests every upstream dependency
+// so we know exactly what's working vs broken at any moment.
+// GET /api/debug/system-status
+app.get('/api/debug/system-status', async (req, res) => {
+  const results = {
+    timestamp: new Date().toISOString(),
+    fyers: { available: !!accessToken },
+    upstreams: {},
+  };
+
+  // Test 1: Fyers history (equity) — what scanner needs
+  if (accessToken) {
+    try {
+      const candles = await getHistoryShortKey('NSE:RELIANCE-EQ');
+      results.upstreams.fyers_history_equity = {
+        ok: candles.length >= 30,
+        candleCount: candles.length,
+        latest: candles[candles.length - 1] || null,
+      };
+    } catch (e) {
+      results.upstreams.fyers_history_equity = { ok: false, error: e.message };
+    }
+
+    // Test 2: Fyers quote (index) — what pre-market falls back to
+    try {
+      const fyers = getFyers();
+      const r = await fyers.getQuotes(['NSE:NIFTY50-INDEX']);
+      const v = r?.d?.[0]?.v;
+      results.upstreams.fyers_quote_index = {
+        ok: !!(v && (v.lp != null || v.ltp != null)),
+        rawFields: v ? Object.keys(v) : null,
+        sampleData: v ? { lp: v.lp, chp: v.chp, prev_close_price: v.prev_close_price } : null,
+      };
+    } catch (e) {
+      results.upstreams.fyers_quote_index = { ok: false, error: e.message };
+    }
+  } else {
+    results.upstreams.fyers_history_equity = { ok: false, error: 'not authenticated' };
+    results.upstreams.fyers_quote_index = { ok: false, error: 'not authenticated' };
+  }
+
+  // Test 3: Stooq (primary global cues source)
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch('https://stooq.com/q/l/?s=^dji&f=sd2t2ohlcv&h&e=csv', { signal: ctrl.signal });
+    clearTimeout(timer);
+    const text = await r.text();
+    results.upstreams.stooq = {
+      ok: r.ok && text.length > 50 && !text.includes('N/D'),
+      sampleResponse: text.substring(0, 200),
+    };
+  } catch (e) {
+    results.upstreams.stooq = { ok: false, error: e.message };
+  }
+
+  // Test 4: Yahoo (secondary source)
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/^DJI?interval=1d&range=2d', { signal: ctrl.signal });
+    clearTimeout(timer);
+    const text = await r.text();
+    results.upstreams.yahoo = {
+      ok: r.ok && text.length > 100 && !text.includes('error'),
+      status: r.status,
+      sampleResponse: text.substring(0, 200),
+    };
+  } catch (e) {
+    results.upstreams.yahoo = { ok: false, error: e.message };
+  }
+
+  // Test 5: Moneycontrol (FII/DII)
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch('https://www.moneycontrol.com/stocks/marketstats/fii_dii_activity/index.php', {
+      signal: ctrl.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    clearTimeout(timer);
+    results.upstreams.moneycontrol = { ok: r.ok, status: r.status };
+  } catch (e) {
+    results.upstreams.moneycontrol = { ok: false, error: e.message };
+  }
+
+  // Cache state
+  results.cache = {
+    entries: cache.size,
+    sampleKeys: Array.from(cache.keys()).slice(0, 10),
+  };
+
+  res.json(results);
+});
+
 // Debug: inspect raw Fyers quote response for an index/symbol.
 // Useful for diagnosing why pre-market Fyers fallback isn't populating cues.
 // GET /api/debug/quote/NSE:NIFTY50-INDEX
