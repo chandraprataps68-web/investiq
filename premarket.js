@@ -30,7 +30,9 @@ async function fetchStooqQuote(stooqSym) {
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': 'InvestIQ/6.0' },
-      signal: AbortSignal.timeout(8000),
+      // 3s timeout — Stooq consistently times out from Render IPs.
+      // No point waiting 8s × 12 cues = 96s of doomed fetches.
+      signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) throw new Error(`stooq HTTP ${res.status}`);
     const text = await res.text();
@@ -69,7 +71,9 @@ async function fetchYahooChart(yahooSym) {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json',
       },
-      signal: AbortSignal.timeout(8000),
+      // 5s timeout — we serialize 12 calls, each must be quick.
+      // Yahoo typically responds in 200-500ms when not rate-limited.
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) throw new Error(`yahoo HTTP ${res.status}`);
     const json = await res.json();
@@ -88,9 +92,14 @@ async function fetchYahooChart(yahooSym) {
   }
 }
 
-// ─── Combined fetch: try Stooq → Yahoo ─────
-// Fyers fallback for India indices happens in getPreMarketSnapshot AFTER this,
-// since it's only available when authenticated. See post-fetch fill block below.
+// ─── Combined fetch: try Yahoo (serialized) → Stooq fallback ─
+//
+// CRITICAL: Yahoo's unauthenticated chart endpoint rate-limits per-IP burst.
+// Parallel Promise.all of 12 cues = self-DDoS = HTTP 429 on every call.
+// We must SERIALIZE Yahoo calls with delays. Diagnostic confirms Yahoo works
+// when called individually but fails when 12 fire simultaneously.
+//
+// Adaptive backoff: if we see 429, increase the delay to give Yahoo room to recover.
 async function fetchGlobalCues() {
   const logOnce = !global.__cuesLogged;
   if (logOnce) {
@@ -98,23 +107,53 @@ async function fetchGlobalCues() {
     setTimeout(() => { global.__cuesLogged = false; }, 5 * 60 * 1000);
   }
 
-  const results = await Promise.all(
-    GLOBAL_CUES.map(async (cue) => {
+  const results = [];
+  let delayMs = 600; // base delay between Yahoo calls
+  let consecutive429s = 0;
+
+  for (const cue of GLOBAL_CUES) {
+    let data;
+    let yahooResult, stooqResult = 'SKIPPED';
+
+    const yh = await fetchYahooChart(cue.yahoo);
+    if (!yh.error) {
+      data = yh;
+      yahooResult = `OK(${yh.price})`;
+      // Success — gradually decrease delay back toward 600ms baseline
+      consecutive429s = 0;
+      if (delayMs > 600) delayMs = Math.max(600, delayMs - 200);
+    } else {
+      yahooResult = `FAIL(${yh.error})`;
+      // Detect rate limiting and back off aggressively
+      if (yh.error.includes('429')) {
+        consecutive429s++;
+        // Multiplicative backoff: 600 → 1500 → 3000 → 5000ms
+        delayMs = Math.min(5000, delayMs + 900 * consecutive429s);
+      }
+      // Yahoo failed — try Stooq fallback
       const stooqSym = STOOQ_MAP[cue.yahoo];
-      let data = stooqSym ? await fetchStooqQuote(stooqSym) : { error: 'no stooq mapping' };
-      const stooqResult = data.error ? `FAIL(${data.error})` : `OK(${data.price})`;
-      let yahooResult = 'SKIPPED';
-      if (data.error) {
-        const yh = await fetchYahooChart(cue.yahoo);
-        yahooResult = yh.error ? `FAIL(${yh.error})` : `OK(${yh.price})`;
-        if (!yh.error) data = yh;
+      if (stooqSym) {
+        const sq = await fetchStooqQuote(stooqSym);
+        if (!sq.error) {
+          data = sq;
+          stooqResult = `OK(${sq.price})`;
+        } else {
+          stooqResult = `FAIL(${sq.error})`;
+          data = { error: yh.error };
+        }
+      } else {
+        data = { error: yh.error };
       }
-      if (logOnce) {
-        console.log(`[cues] ${cue.id.padEnd(11)} stooq=${stooqResult.padEnd(35)} yahoo=${yahooResult}`);
-      }
-      return { ...cue, ...data };
-    })
-  );
+    }
+
+    if (logOnce) {
+      console.log(`[cues] ${cue.id.padEnd(11)} yahoo=${yahooResult.padEnd(40)} stooq=${stooqResult.padEnd(35)} nextDelay=${delayMs}ms`);
+    }
+    results.push({ ...cue, ...data });
+
+    // Sleep before next iteration (only if more cues remaining)
+    await new Promise(r => setTimeout(r, delayMs));
+  }
   return results;
 }
 
