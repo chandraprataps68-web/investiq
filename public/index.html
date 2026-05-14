@@ -80,6 +80,126 @@ header {
 }
 .auth-btn:hover { background: var(--accent-2); }
 
+/* Status button — small pill in header for opening diagnostic modal */
+.status-btn {
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--ink-3);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.status-btn:hover {
+  color: var(--ink-1);
+  border-color: var(--ink-3);
+  background: rgba(255,255,255,0.03);
+}
+
+/* Diagnostic modal — covers screen, centered card */
+.status-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.status-modal.open { display: flex; }
+.status-modal-content {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 720px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.status-modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.status-modal-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 22px;
+  color: var(--ink-1);
+}
+.status-modal-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+.status-modal-close {
+  background: none;
+  border: none;
+  color: var(--ink-3);
+  font-size: 28px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+}
+.status-modal-close:hover { color: var(--ink-1); }
+.status-modal-body {
+  padding: 16px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+.status-modal-footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* Each source row inside modal */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.status-row:last-child { border-bottom: none; }
+.status-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+  min-width: 50px;
+  text-align: center;
+}
+.status-pill.ok { background: rgba(78,206,121,0.15); color: var(--buy); }
+.status-pill.fail { background: rgba(255,107,107,0.15); color: var(--sell); }
+.status-pill.warn { background: rgba(255,184,0,0.15); color: var(--hold); }
+.status-source-name { color: var(--ink-1); font-weight: 600; min-width: 180px; }
+.status-detail { color: var(--ink-3); flex: 1; font-size: 11px; }
+.status-section-title {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  margin: 18px 0 6px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.status-section-title:first-child { margin-top: 0; }
+
 /* Tabs */
 nav.tabs {
   display: flex; gap: 4px;
@@ -348,8 +468,29 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
     <span class="mono" id="market-status">CHECKING...</span>
     <span class="mono" id="auth-status" style="color:var(--ink-3)">—</span>
     <a class="auth-btn" id="login-btn" href="/auth/login" style="display:none">Connect Fyers</a>
+    <button class="status-btn" id="status-btn" title="Check data source health">STATUS</button>
   </div>
 </header>
+
+<!-- Diagnostic modal — opens when STATUS button is clicked -->
+<div id="status-modal" class="status-modal">
+  <div class="status-modal-content">
+    <div class="status-modal-header">
+      <div>
+        <div class="status-modal-title">Data Source Health</div>
+        <div class="status-modal-sub" id="status-timestamp">—</div>
+      </div>
+      <button class="status-modal-close" id="status-close">×</button>
+    </div>
+    <div class="status-modal-body" id="status-body">
+      <div style="text-align:center;color:var(--ink-3);padding:40px">Checking upstream sources…</div>
+    </div>
+    <div class="status-modal-footer">
+      <button class="status-btn" id="status-refresh">Re-check</button>
+      <button class="status-btn" id="status-flush" title="Clear in-memory cache (recovers from poisoned cache)">Flush Cache</button>
+    </div>
+  </div>
+</div>
 
 <nav class="tabs">
   <button class="tab active" data-tab="premarket"><span class="tab-num">01</span>Pre-Market</button>
@@ -2749,6 +2890,134 @@ setInterval(() => {
     loadIntraday(window.__intraSym || 'BANKNIFTY', true);
   }
 }, 15 * 60_000);
+// ─── Diagnostic Status Modal ─────
+// Lets the user check upstream data source health without using curl/dev tools.
+// Triggered by the STATUS button in the header. Calls /api/debug/system-status
+// and translates the JSON into a human-readable list.
+
+const statusModal = document.getElementById('status-modal');
+const statusBody = document.getElementById('status-body');
+const statusTimestamp = document.getElementById('status-timestamp');
+
+// Human-readable labels for upstream sources
+const SOURCE_LABELS = {
+  fyers_history_equity: { name: 'Fyers — Stock History', use: 'Scanner, Stock Search' },
+  fyers_quote_index:    { name: 'Fyers — Index Quote',   use: 'Pre-Market (GIFT Nifty, India VIX)' },
+  stooq:                { name: 'Stooq',                 use: 'Pre-Market (US/EU/Asia indices)' },
+  yahoo:                { name: 'Yahoo Finance',         use: 'Pre-Market (fallback for cues)' },
+  moneycontrol:         { name: 'Moneycontrol',          use: 'Pre-Market (FII/DII flows)' },
+};
+
+function renderStatusRow(key, data) {
+  const meta = SOURCE_LABELS[key] || { name: key, use: '' };
+  const ok = !!data.ok;
+  const pillClass = ok ? 'ok' : 'fail';
+  const pillText = ok ? 'OK' : 'FAIL';
+  let detail = '';
+  if (ok) {
+    if (data.candleCount != null) detail = `${data.candleCount} candles`;
+    else if (data.sampleData) detail = `lp=${data.sampleData.lp ?? '?'} chp=${data.sampleData.chp ?? '?'}`;
+    else if (data.status) detail = `HTTP ${data.status}`;
+    else detail = 'responding';
+  } else {
+    detail = data.error || `HTTP ${data.status || '?'}` || 'no response';
+    if (data.sampleResponse) detail += ` · ${String(data.sampleResponse).substring(0, 80)}`;
+  }
+  return `
+    <div class="status-row">
+      <span class="status-pill ${pillClass}">${pillText}</span>
+      <div>
+        <div class="status-source-name">${meta.name}</div>
+        <div class="status-detail" style="margin-top:2px">Used by: ${meta.use}</div>
+      </div>
+      <div class="status-detail" style="text-align:right;max-width:280px">${detail}</div>
+    </div>
+  `;
+}
+
+async function loadStatus() {
+  statusBody.innerHTML = '<div style="text-align:center;color:var(--ink-3);padding:40px">Checking upstream sources…</div>';
+  try {
+    const r = await fetch('/api/debug/system-status');
+    if (!r.ok) {
+      statusBody.innerHTML = `<div style="color:var(--sell);padding:20px;text-align:center">Server returned HTTP ${r.status}</div>`;
+      return;
+    }
+    const data = await r.json();
+    statusTimestamp.textContent = new Date(data.timestamp).toLocaleString();
+
+    // Build sections
+    let html = '';
+
+    // Section 1: Fyers
+    html += '<div class="status-section-title">Fyers (broker API)</div>';
+    if (!data.fyers?.available) {
+      html += '<div style="color:var(--sell);padding:8px 0;font-family:JetBrains Mono;font-size:12px">⚠ Not authenticated. Click "Connect Fyers" in header.</div>';
+    } else {
+      if (data.upstreams.fyers_history_equity) html += renderStatusRow('fyers_history_equity', data.upstreams.fyers_history_equity);
+      if (data.upstreams.fyers_quote_index)    html += renderStatusRow('fyers_quote_index', data.upstreams.fyers_quote_index);
+    }
+
+    // Section 2: External data
+    html += '<div class="status-section-title">External Data Sources</div>';
+    if (data.upstreams.stooq)        html += renderStatusRow('stooq', data.upstreams.stooq);
+    if (data.upstreams.yahoo)        html += renderStatusRow('yahoo', data.upstreams.yahoo);
+    if (data.upstreams.moneycontrol) html += renderStatusRow('moneycontrol', data.upstreams.moneycontrol);
+
+    // Section 3: Summary diagnosis
+    const fails = Object.entries(data.upstreams).filter(([k, v]) => !v.ok);
+    const yahooFail = data.upstreams.yahoo && !data.upstreams.yahoo.ok;
+    const stooqFail = data.upstreams.stooq && !data.upstreams.stooq.ok;
+
+    html += '<div class="status-section-title">Diagnosis</div>';
+    html += '<div style="font-family:JetBrains Mono;font-size:12px;color:var(--ink-2);line-height:1.7;padding:6px 0">';
+    if (fails.length === 0) {
+      html += '✓ All sources operational. Pre-market bias should compute reliably.';
+    } else if (yahooFail && stooqFail) {
+      html += '<strong style="color:var(--sell)">⚠ Both Yahoo AND Stooq are blocked from this server.</strong><br><br>';
+      html += 'This is a known Render/cloud IP block — Yahoo & Stooq aggressively block cloud provider ranges. ';
+      html += 'Result: only Fyers-served cues (GIFT Nifty, India VIX) can populate. International cues (Dow, Nasdaq, Nikkei, etc.) will stay blank.<br><br>';
+      html += '<strong>Fix needed:</strong> Add a different data source like Twelve Data (free 800 req/day, no IP blocks). Requires a new API key from twelvedata.com.';
+    } else if (yahooFail) {
+      html += '<strong style="color:var(--hold)">⚠ Yahoo blocked, Stooq working.</strong> Some cues will populate via Stooq fallback. Bias may still compute if Stooq carries enough.';
+    } else if (stooqFail) {
+      html += '<strong style="color:var(--hold)">⚠ Stooq blocked, Yahoo working.</strong> Yahoo fallback should fill most cues.';
+    }
+    html += `<br><br>Cache: ${data.cache?.entries || 0} entries in memory.`;
+    html += '</div>';
+
+    statusBody.innerHTML = html;
+  } catch (e) {
+    statusBody.innerHTML = `<div style="color:var(--sell);padding:20px;text-align:center">Error: ${e.message}</div>`;
+  }
+}
+
+document.getElementById('status-btn').addEventListener('click', () => {
+  statusModal.classList.add('open');
+  loadStatus();
+});
+document.getElementById('status-close').addEventListener('click', () => {
+  statusModal.classList.remove('open');
+});
+document.getElementById('status-refresh').addEventListener('click', () => loadStatus());
+document.getElementById('status-flush').addEventListener('click', async () => {
+  const btn = document.getElementById('status-flush');
+  btn.textContent = 'Flushing…';
+  try {
+    const r = await fetch('/api/debug/flush-cache', { method: 'POST' });
+    const data = await r.json();
+    btn.textContent = data.ok ? `Cleared ${data.entriesCleared}` : 'Failed';
+    setTimeout(() => { btn.textContent = 'Flush Cache'; loadStatus(); }, 1500);
+  } catch (e) {
+    btn.textContent = 'Failed';
+    setTimeout(() => { btn.textContent = 'Flush Cache'; }, 1500);
+  }
+});
+// Close modal on backdrop click
+statusModal.addEventListener('click', (e) => {
+  if (e.target === statusModal) statusModal.classList.remove('open');
+});
+
 </script>
 </body>
 </html>
