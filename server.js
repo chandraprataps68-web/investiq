@@ -512,11 +512,15 @@ app.get('/api/premarket', async (req, res) => {
     //   - Full or near-full data (≥6/12 cues): cache 5 min (default)
     //   - Degraded (1-5 cues): cache 60 sec — retry sooner
     //   - INSUFFICIENT_DATA (0 cues): cache 30 sec — retry very soon
+    // Cache TTL adaptive to data quality. With Twelve Data 7-symbol batch:
+    //   - 5+ cues live (good): cache 5 min
+    //   - 1-4 cues live (degraded): cache 2 min — retry sooner but don't hammer
+    //   - 0 cues live (broken): cache 30s — retry quickly to recover from transient errors
     // This prevents one bad fetch from poisoning the cache for 5 minutes.
     const cuesLive = data.bias?.dataQuality?.cuesAvailable ?? 0;
     let cacheTtl = 5 * 60 * 1000;
     if (cuesLive === 0) cacheTtl = 30 * 1000;
-    else if (cuesLive < 6) cacheTtl = 60 * 1000;
+    else if (cuesLive < 5) cacheTtl = 2 * 60 * 1000;
     cacheSet(ck, data, cacheTtl);
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1173,17 +1177,26 @@ app.get('/api/debug/system-status', async (req, res) => {
   }
 
   // Test 3: Twelve Data (new primary source — Phase 12.5)
+  // Probe results cached for 60s to avoid burning credits on repeated STATUS clicks.
   try {
-    const { probeOneSymbol } = require('./twelvedata');
-    const probe = await probeOneSymbol(process.env.TWELVEDATA_API_KEY, 'DJI');
-    results.upstreams.twelvedata = {
-      ok: probe.ok,
-      status: probe.status,
-      error: probe.error,
-      sampleSymbol: probe.sampleSymbol,
-      samplePrice: probe.samplePrice,
-      apiKeySet: !!process.env.TWELVEDATA_API_KEY,
-    };
+    const probeCached = cacheGet('td_probe');
+    if (probeCached) {
+      results.upstreams.twelvedata = { ...probeCached, cached: true };
+    } else {
+      const { probeOneSymbol } = require('./twelvedata');
+      const probe = await probeOneSymbol(process.env.TWELVEDATA_API_KEY, 'DJI');
+      const probeData = {
+        ok: probe.ok,
+        status: probe.status,
+        error: probe.error,
+        sampleSymbol: probe.sampleSymbol,
+        samplePrice: probe.samplePrice,
+        apiKeySet: !!process.env.TWELVEDATA_API_KEY,
+      };
+      // Cache OK results for 60s (saves credits). Cache failures for 30s.
+      cacheSet('td_probe', probeData, probe.ok ? 60_000 : 30_000);
+      results.upstreams.twelvedata = probeData;
+    }
   } catch (e) {
     results.upstreams.twelvedata = { ok: false, error: e.message };
   }

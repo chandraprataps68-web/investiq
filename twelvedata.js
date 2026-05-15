@@ -17,25 +17,32 @@ const TD_API_BASE = 'https://api.twelvedata.com';
 const TD_TIMEOUT_MS = 10_000;
 
 // Map our cue IDs to Twelve Data symbol strings.
-// Twelve Data uses different conventions than Yahoo:
-//   - US indices: DJI, IXIC, SPX
-//   - International indices: NI225, HSI, UKX, GDAXI
-//   - Forex: EUR/USD format
-//   - Commodities: BRENT (their own ticker)
-// Verified at https://twelvedata.com/data/indices and /forex
+// Twelve Data symbol mapping for our cue IDs.
+// LIMITED TO 7 SYMBOLS to fit under free-tier 8 credits/minute limit.
+// (Twelve Data charges 1 credit per symbol queried, even in a batch.)
+//
+// Selected for highest signal-to-noise on Indian pre-market bias:
+//   US:     DJI, IXIC, SPX (US session sets overnight tone)
+//   ASIA:   N225 (Nikkei — Japan opens before India)
+//   EU:     GDAXI (DAX — European session crosses with India market open)
+//   INDIA:  NIFTY (proxy for GIFT Nifty)
+//   VOL:    VIX (global risk-off indicator)
+//
+// Dropped (Phase 12.6) to fit free tier:
+//   HangSeng (redundant with N225 for Asian signal)
+//   FTSE (DAX is stronger EU proxy for India)
+//   BRENT (energy signal covered by news catalysts)
+//   DXY, USD/INR (FII flow effect already in T-1 FII/DII data)
+//
+// If user upgrades to Twelve Data Basic ($29/mo, 55 credits/min), restore all 12.
 const TD_SYMBOL_MAP = {
-  GIFT_NIFTY: 'NIFTY',     // Twelve Data carries NIFTY index
+  GIFT_NIFTY: 'NIFTY',     // India proxy
   DOW: 'DJI',
   NASDAQ: 'IXIC',
   SP500: 'SPX',
   NIKKEI: 'N225',
-  HANGSENG: 'HSI',
-  FTSE: 'UKX',
   DAX: 'GDAXI',
-  BRENT: 'BRENT',          // commodity ticker
-  DXY: 'DXY',              // dollar index
-  USDINR: 'USD/INR',       // forex pair
-  VIX: 'VIX',              // volatility index
+  VIX: 'VIX',
 };
 
 /**
