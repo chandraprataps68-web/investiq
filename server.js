@@ -8,6 +8,7 @@ const path = require('path');
 const { fyersModel } = require('fyers-api-v3');
 
 const TA = require('./ta');
+const Zones = require('./zones');
 const { runScanner } = require('./scanner');
 const { getPreMarketSnapshot } = require('./premarket');
 const { fetchCrypto, fetchCryptoHistory, fetchCommodities } = require('./commodities');
@@ -414,14 +415,49 @@ app.get('/api/quote/:symbol', requireAuth, async (req, res) => {
 });
 
 // Path-style history (auto-prefixes plain symbols to NSE:...-EQ)
+// Supports ?resolution=D|W|M and ?days=N for date range.
+// During market hours, appends/updates today's candle with live quote so
+// the chart reflects the current price (not yesterday's close).
 app.get('/api/history/:symbol', requireAuth, async (req, res) => {
   try {
     let sym = decodeURIComponent(req.params.symbol).toUpperCase();
     if (!sym.includes(':')) sym = toFyersEquity(sym);
     const resolution = req.query.resolution || 'D';
-    const days = parseInt(req.query.days || '365', 10);
+    // For W/M resolutions, request larger range so we have enough candles
+    const defaultDays = resolution === 'W' ? 365 * 3 : resolution === 'M' ? 365 * 10 : 365;
+    const days = parseInt(req.query.days || String(defaultDays), 10);
     const candles = await getHistoryShortKey(sym, resolution, days);
-    res.json({ symbol: sym, candles: toLongKeyCandles(candles) });
+
+    // Chart accuracy fix: during market hours on daily timeframe, append live quote
+    // as today's candle so chart matches the header price.
+    if (resolution === 'D' && isMarketHours() && candles.length > 0) {
+      try {
+        const q = await getQuoteOne(sym);
+        const live = q?.lp ?? q?.ltp;
+        if (live && Number.isFinite(live)) {
+          const lastCandle = candles[candles.length - 1];
+          const todayMidnightSec = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
+          if (lastCandle.t >= todayMidnightSec) {
+            // Last candle is today's — update close + extend high/low if needed
+            lastCandle.c = live;
+            lastCandle.h = Math.max(lastCandle.h, live);
+            lastCandle.l = Math.min(lastCandle.l, live);
+          } else {
+            // Last candle is yesterday — append synthetic today candle
+            candles.push({
+              t: todayMidnightSec,
+              o: q?.open_price ?? lastCandle.c,
+              h: q?.high_price ?? live,
+              l: q?.low_price ?? live,
+              c: live,
+              v: q?.volume ?? 0,
+            });
+          }
+        }
+      } catch (_) { /* fall back to history-only */ }
+    }
+
+    res.json({ symbol: sym, candles: toLongKeyCandles(candles), resolution });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -443,7 +479,9 @@ app.get('/api/analyze/:symbol', requireAuth, async (req, res) => {
     const a = TA.fullAnalysis(candles);
     const sig = TA.generateSignal(a);
     const quote = await getQuoteOne(sym).catch(() => null);
-    res.json({ ok: true, symbol: sym, quote, analysis: a, signal: sig });
+    const currentPrice = quote?.lp ?? quote?.ltp ?? candles[candles.length - 1].c;
+    const zones = Zones.buildZones(candles, currentPrice);
+    res.json({ ok: true, symbol: sym, quote, analysis: a, signal: sig, zones });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
