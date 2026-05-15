@@ -2903,8 +2903,8 @@ const statusTimestamp = document.getElementById('status-timestamp');
 const SOURCE_LABELS = {
   fyers_history_equity: { name: 'Fyers — Stock History', use: 'Scanner, Stock Search' },
   fyers_quote_index:    { name: 'Fyers — Index Quote',   use: 'Pre-Market (GIFT Nifty, India VIX)' },
-  stooq:                { name: 'Stooq',                 use: 'Pre-Market (US/EU/Asia indices)' },
-  yahoo:                { name: 'Yahoo Finance',         use: 'Pre-Market (fallback for cues)' },
+  twelvedata:           { name: 'Twelve Data',           use: 'Pre-Market (all global cues)' },
+  yahoo_legacy:         { name: 'Yahoo Finance (legacy)', use: 'Disabled — rate-limited by Render IPs' },
   moneycontrol:         { name: 'Moneycontrol',          use: 'Pre-Market (FII/DII flows)' },
 };
 
@@ -2960,28 +2960,37 @@ async function loadStatus() {
 
     // Section 2: External data
     html += '<div class="status-section-title">External Data Sources</div>';
-    if (data.upstreams.stooq)        html += renderStatusRow('stooq', data.upstreams.stooq);
-    if (data.upstreams.yahoo)        html += renderStatusRow('yahoo', data.upstreams.yahoo);
+    if (data.upstreams.twelvedata)   html += renderStatusRow('twelvedata', data.upstreams.twelvedata);
     if (data.upstreams.moneycontrol) html += renderStatusRow('moneycontrol', data.upstreams.moneycontrol);
+    if (data.upstreams.yahoo_legacy) html += renderStatusRow('yahoo_legacy', data.upstreams.yahoo_legacy);
 
     // Section 3: Summary diagnosis
-    const fails = Object.entries(data.upstreams).filter(([k, v]) => !v.ok);
-    const yahooFail = data.upstreams.yahoo && !data.upstreams.yahoo.ok;
-    const stooqFail = data.upstreams.stooq && !data.upstreams.stooq.ok;
+    const tdOk = data.upstreams.twelvedata?.ok;
+    const tdKeySet = data.upstreams.twelvedata?.apiKeySet;
+    const fyersOk = data.upstreams.fyers_quote_index?.ok;
 
     html += '<div class="status-section-title">Diagnosis</div>';
     html += '<div style="font-family:JetBrains Mono;font-size:12px;color:var(--ink-2);line-height:1.7;padding:6px 0">';
-    if (fails.length === 0) {
-      html += '✓ All sources operational. Pre-market bias should compute reliably.';
-    } else if (yahooFail && stooqFail) {
-      html += '<strong style="color:var(--sell)">⚠ Both Yahoo AND Stooq are blocked from this server.</strong><br><br>';
-      html += 'This is a known Render/cloud IP block — Yahoo & Stooq aggressively block cloud provider ranges. ';
-      html += 'Result: only Fyers-served cues (GIFT Nifty, India VIX) can populate. International cues (Dow, Nasdaq, Nikkei, etc.) will stay blank.<br><br>';
-      html += '<strong>Fix needed:</strong> Add a different data source like Twelve Data (free 800 req/day, no IP blocks). Requires a new API key from twelvedata.com.';
-    } else if (yahooFail) {
-      html += '<strong style="color:var(--hold)">⚠ Yahoo blocked, Stooq working.</strong> Some cues will populate via Stooq fallback. Bias may still compute if Stooq carries enough.';
-    } else if (stooqFail) {
-      html += '<strong style="color:var(--hold)">⚠ Stooq blocked, Yahoo working.</strong> Yahoo fallback should fill most cues.';
+    if (tdOk) {
+      html += '<span style="color:var(--buy)">✓ Twelve Data operational.</span> Pre-market should populate all 12 global cues. Bias will compute reliably.';
+    } else if (!tdKeySet) {
+      html += '<strong style="color:var(--sell)">⚠ TWELVEDATA_API_KEY environment variable not set.</strong><br><br>';
+      html += '1. Sign up at <span style="color:var(--accent)">twelvedata.com</span> (free, no credit card)<br>';
+      html += '2. Copy your API key from the dashboard<br>';
+      html += '3. In Render → your service → Environment → Add Environment Variable<br>';
+      html += '4. Key: <code>TWELVEDATA_API_KEY</code>  Value: <em>your-key</em><br>';
+      html += '5. Render will auto-redeploy. Pre-market will start working in ~2 min.<br><br>';
+      html += `Until then, only Fyers India cues (GIFT Nifty, VIX) will populate ${fyersOk ? '(working)' : '(not authenticated)'}.`;
+    } else {
+      const err = data.upstreams.twelvedata?.error || 'unknown';
+      html += `<strong style="color:var(--sell)">⚠ Twelve Data returned an error:</strong> ${err}<br><br>`;
+      if (err.includes('429') || err.toLowerCase().includes('rate')) {
+        html += 'Rate limited. Free tier is 800 credits/day, 8/minute. Wait 1 minute and retry.';
+      } else if (err.toLowerCase().includes('apikey') || err.includes('401') || err.includes('403')) {
+        html += 'API key appears invalid. Re-check the value in Render env vars.';
+      } else {
+        html += 'Check Twelve Data status page or contact their support.';
+      }
     }
     html += `<br><br>Cache: ${data.cache?.entries || 0} entries in memory.`;
     html += '</div>';
