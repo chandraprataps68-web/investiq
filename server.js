@@ -1172,41 +1172,39 @@ app.get('/api/debug/system-status', async (req, res) => {
     results.upstreams.fyers_quote_index = { ok: false, error: 'not authenticated' };
   }
 
-  // Test 3: Stooq (primary global cues source)
+  // Test 3: Twelve Data (new primary source — Phase 12.5)
+  try {
+    const { probeOneSymbol } = require('./twelvedata');
+    const probe = await probeOneSymbol(process.env.TWELVEDATA_API_KEY, 'DJI');
+    results.upstreams.twelvedata = {
+      ok: probe.ok,
+      status: probe.status,
+      error: probe.error,
+      sampleSymbol: probe.sampleSymbol,
+      samplePrice: probe.samplePrice,
+      apiKeySet: !!process.env.TWELVEDATA_API_KEY,
+    };
+  } catch (e) {
+    results.upstreams.twelvedata = { ok: false, error: e.message };
+  }
+
+  // Test 4: Yahoo (legacy, kept for historical comparison — usually 429 from Render)
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 5000);
-    const r = await fetch('https://stooq.com/q/l/?s=^dji&f=sd2t2ohlcv&h&e=csv', { signal: ctrl.signal });
-    clearTimeout(timer);
-    const text = await r.text();
-    results.upstreams.stooq = {
-      ok: r.ok && text.length > 50 && !text.includes('N/D'),
-      sampleResponse: text.substring(0, 200),
-    };
-  } catch (e) {
-    results.upstreams.stooq = { ok: false, error: e.message };
-  }
-
-  // Test 4: Yahoo (secondary source) — parse actual response, not substring match
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
     const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/^DJI?interval=1d&range=2d', { signal: ctrl.signal });
     clearTimeout(timer);
     const text = await r.text();
     let parsed = null;
     try { parsed = JSON.parse(text); } catch (_) {}
-    // The real success check: do we have actual chart data?
     const hasData = parsed?.chart?.result?.[0]?.meta?.regularMarketPrice != null;
-    results.upstreams.yahoo = {
+    results.upstreams.yahoo_legacy = {
       ok: r.ok && hasData,
       status: r.status,
-      hasData,
-      sampleSymbol: parsed?.chart?.result?.[0]?.meta?.symbol || null,
-      samplePrice: parsed?.chart?.result?.[0]?.meta?.regularMarketPrice || null,
+      note: r.status === 429 ? 'Rate limited (expected from Render)' : null,
     };
   } catch (e) {
-    results.upstreams.yahoo = { ok: false, error: e.message };
+    results.upstreams.yahoo_legacy = { ok: false, error: e.message };
   }
 
   // Test 5: Moneycontrol (FII/DII)

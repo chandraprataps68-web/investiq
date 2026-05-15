@@ -92,68 +92,49 @@ async function fetchYahooChart(yahooSym) {
   }
 }
 
-// ─── Combined fetch: try Yahoo (serialized) → Stooq fallback ─
+// ─── Combined fetch: Twelve Data batch (single HTTP call for all 12 cues) ─
 //
-// CRITICAL: Yahoo's unauthenticated chart endpoint rate-limits per-IP burst.
-// Parallel Promise.all of 12 cues = self-DDoS = HTTP 429 on every call.
-// We must SERIALIZE Yahoo calls with delays. Diagnostic confirms Yahoo works
-// when called individually but fails when 12 fire simultaneously.
-//
-// Adaptive backoff: if we see 429, increase the delay to give Yahoo room to recover.
+// PHASE 12.5 CHANGE: Yahoo and Stooq proven unreliable from Render IPs:
+//   - Yahoo: HTTP 429 rate-limit at daily quota level on Render outbound IPs
+//   - Stooq: TCP timeout, unreachable
+// Twelve Data has no IP-based blocking, supports batch (12 symbols / 1 request).
+// Fyers fallback for India indices (GIFT_NIFTY, VIX) remains in
+// getPreMarketSnapshot — works when Twelve Data is unavailable (no API key) or
+// returns errors for India-specific symbols.
 async function fetchGlobalCues() {
+  const apiKey = process.env.TWELVEDATA_API_KEY;
   const logOnce = !global.__cuesLogged;
   if (logOnce) {
     global.__cuesLogged = true;
     setTimeout(() => { global.__cuesLogged = false; }, 5 * 60 * 1000);
   }
 
-  const results = [];
-  let delayMs = 600; // base delay between Yahoo calls
-  let consecutive429s = 0;
-
-  for (const cue of GLOBAL_CUES) {
-    let data;
-    let yahooResult, stooqResult = 'SKIPPED';
-
-    const yh = await fetchYahooChart(cue.yahoo);
-    if (!yh.error) {
-      data = yh;
-      yahooResult = `OK(${yh.price})`;
-      // Success — gradually decrease delay back toward 600ms baseline
-      consecutive429s = 0;
-      if (delayMs > 600) delayMs = Math.max(600, delayMs - 200);
-    } else {
-      yahooResult = `FAIL(${yh.error})`;
-      // Detect rate limiting and back off aggressively
-      if (yh.error.includes('429')) {
-        consecutive429s++;
-        // Multiplicative backoff: 600 → 1500 → 3000 → 5000ms
-        delayMs = Math.min(5000, delayMs + 900 * consecutive429s);
-      }
-      // Yahoo failed — try Stooq fallback
-      const stooqSym = STOOQ_MAP[cue.yahoo];
-      if (stooqSym) {
-        const sq = await fetchStooqQuote(stooqSym);
-        if (!sq.error) {
-          data = sq;
-          stooqResult = `OK(${sq.price})`;
-        } else {
-          stooqResult = `FAIL(${sq.error})`;
-          data = { error: yh.error };
-        }
-      } else {
-        data = { error: yh.error };
-      }
-    }
-
-    if (logOnce) {
-      console.log(`[cues] ${cue.id.padEnd(11)} yahoo=${yahooResult.padEnd(40)} stooq=${stooqResult.padEnd(35)} nextDelay=${delayMs}ms`);
-    }
-    results.push({ ...cue, ...data });
-
-    // Sleep before next iteration (only if more cues remaining)
-    await new Promise(r => setTimeout(r, delayMs));
+  if (!apiKey) {
+    if (logOnce) console.log('[cues] TWELVEDATA_API_KEY not set — all cues will fall back to Fyers (India only)');
+    // Return all cues with error so post-fetch Fyers fill takes over
+    return GLOBAL_CUES.map(cue => ({ ...cue, error: 'no twelvedata key' }));
   }
+
+  // Single batch call — covers all 12 cues
+  const { fetchAllCues } = require('./twelvedata');
+  const tdResult = await fetchAllCues(apiKey);
+
+  if (tdResult.error) {
+    if (logOnce) console.log(`[cues] twelvedata BATCH FAILED: ${tdResult.error}`);
+    return GLOBAL_CUES.map(cue => ({ ...cue, error: tdResult.error }));
+  }
+
+  // Map per-cue results
+  const results = GLOBAL_CUES.map(cue => {
+    const data = tdResult.results[cue.id];
+    if (!data || data.error) {
+      if (logOnce) console.log(`[cues] ${cue.id.padEnd(11)} TD=FAIL(${data?.error || 'missing'})`);
+      return { ...cue, error: data?.error || 'no data' };
+    }
+    if (logOnce) console.log(`[cues] ${cue.id.padEnd(11)} TD=OK(${data.price.toFixed(2)} ${data.changePct?.toFixed(2)}%)`);
+    return { ...cue, ...data };
+  });
+
   return results;
 }
 
