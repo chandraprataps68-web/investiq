@@ -419,6 +419,47 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
 
 #chart { height: 420px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; }
 
+/* Timeframe toggle: D / W / M */
+.tf-toggle { display: inline-flex; gap: 2px; background: var(--bg-3); border-radius: 4px; padding: 2px; }
+.tf-btn {
+  padding: 4px 12px; background: transparent; border: none;
+  color: var(--ink-3); cursor: pointer;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.05em; border-radius: 3px; transition: all 0.15s;
+}
+.tf-btn:hover { color: var(--ink-1); }
+.tf-btn.active { background: var(--accent); color: #fff; }
+
+/* Zones legend below chart */
+.zones-legend {
+  margin-top: 12px; padding: 12px;
+  background: var(--bg-3); border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--ink-3); line-height: 1.6;
+  max-height: 280px; overflow-y: auto;
+}
+.zones-legend-title {
+  font-size: 10px; letter-spacing: 0.12em;
+  color: var(--ink-2); margin-bottom: 8px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.zone-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 3px 0;
+}
+.zone-pill {
+  display: inline-block; padding: 1px 6px; border-radius: 2px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+  min-width: 14px; text-align: center;
+}
+.zone-pill.tf-Q { background: rgba(78,162,255,0.2); color: var(--accent); }
+.zone-pill.tf-M { background: rgba(255,184,0,0.18); color: var(--hold); }
+.zone-pill.tf-W { background: rgba(160,168,181,0.18); color: var(--ink-2); }
+.zone-pill.tf-psych { background: rgba(255,255,255,0.06); color: var(--ink-3); }
+.zone-strength { color: var(--ink-2); }
+.zone-price { font-weight: 600; color: var(--ink-1); min-width: 70px; }
+.zone-dist { color: var(--ink-3); min-width: 60px; text-align: right; }
+
 .target-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--line); }
 .target-row:last-child { border-bottom: none; }
 .target-row .label { color: var(--ink-3); font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.05em; }
@@ -1219,8 +1260,16 @@ function renderStock(data) {
 
     <div class="grid grid-12">
       <div class="card col-8">
-        <div class="card-title">Price chart · daily</div>
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          <span id="chart-title">Price chart · daily</span>
+          <div class="tf-toggle">
+            <button class="tf-btn active" data-tf="D" onclick="setTimeframe('D')">D</button>
+            <button class="tf-btn" data-tf="W" onclick="setTimeframe('W')">W</button>
+            <button class="tf-btn" data-tf="M" onclick="setTimeframe('M')">M</button>
+          </div>
+        </div>
         <div id="chart"></div>
+        <div id="zones-legend" class="zones-legend"></div>
       </div>
 
       <div class="card col-4">
@@ -1283,12 +1332,37 @@ function renderTargets(targets) {
   `;
 }
 
+// ─── Chart with multi-timeframe support + S/R zone overlays ─────
+// Timeframe state lives on window.__stockTf so the toggle persists across re-renders.
+window.__stockTf = window.__stockTf || 'D';
+
+function setTimeframe(tf) {
+  window.__stockTf = tf;
+  document.querySelectorAll('.tf-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tf === tf);
+  });
+  const titleEl = document.getElementById('chart-title');
+  if (titleEl) {
+    titleEl.textContent = `Price chart · ${tf === 'D' ? 'daily' : tf === 'W' ? 'weekly' : 'monthly'}`;
+  }
+  // Re-render chart with new timeframe, keep zones (zones come from daily data)
+  if (window.__lastStockData) renderChart(window.__lastStockData);
+}
+
 async function renderChart(data) {
+  window.__lastStockData = data;
   const el = document.getElementById('chart');
   if (!el) return;
   el.innerHTML = '';
+  const legendEl = document.getElementById('zones-legend');
+  if (legendEl) legendEl.innerHTML = '';
+
+  const tf = window.__stockTf || 'D';
+  // Daily: 180 days. Weekly: 3 years. Monthly: 10 years (will get clipped to available).
+  const days = tf === 'D' ? 180 : tf === 'W' ? 365 * 3 : 365 * 10;
+
   try {
-    const res = await fetch('/api/history/' + encodeURIComponent(data.symbol) + '?days=180');
+    const res = await fetch(`/api/history/${encodeURIComponent(data.symbol)}?resolution=${tf}&days=${days}`);
     const payload = await res.json();
     const raw = payload.candles || [];
     if (!raw.length) {
@@ -1308,8 +1382,6 @@ async function renderChart(data) {
       borderUpColor: '#00c896', borderDownColor: '#ff4d6d',
       wickUpColor: '#00c896', wickDownColor: '#ff4d6d',
     });
-    // Server returns long keys: { time, open, high, low, close, volume }
-    // Accept both shapes defensively
     const candleData = raw.map(c => ({
       time: c.time ?? c.t,
       open: c.open ?? c.o,
@@ -1318,13 +1390,78 @@ async function renderChart(data) {
       close: c.close ?? c.c,
     })).filter(c => c.time && c.close != null);
     candleSeries.setData(candleData);
-    chart.timeScale().fitContent();
 
-    // Resize on window
+    // ─── Draw zones as horizontal price lines ─────────
+    // Zones come from the analyze response (computed on daily candles, so they
+    // overlay correctly on any timeframe). Top 8 closest are shown to avoid spam.
+    const zones = (data.zones && data.zones.zones) || [];
+    const topZones = zones.slice(0, 8);
+    for (const z of topZones) {
+      // Color by type: support = green, resistance = red, neutral pivots = grey
+      const color = z.type === 'resistance' ? '#ff4d6d'
+                  : z.type === 'support'    ? '#00c896'
+                  : '#a0a8b5';
+      // Line style by source: pivot = dashed, swing = solid, round = dotted
+      const lineStyle = z.source === 'pivot' ? 2 // LightweightCharts.LineStyle.Dashed
+                       : z.source === 'round' ? 1 // Dotted
+                       : 0; // Solid
+      // Width by strength
+      const lineWidth = Math.min(3, Math.max(1, Math.round(z.strength)));
+      candleSeries.createPriceLine({
+        price: z.price,
+        color: color,
+        lineWidth: lineWidth,
+        lineStyle: lineStyle,
+        axisLabelVisible: true,
+        title: `${z.timeframe}·${z.kind}`,
+      });
+    }
+
+    chart.timeScale().fitContent();
     const resize = () => {
       if (chart && el.clientWidth) chart.applyOptions({ width: el.clientWidth });
     };
     window.addEventListener('resize', resize, { once: false });
+
+    // ─── Render zones legend below chart ─────────
+    if (legendEl && zones.length > 0) {
+      const counts = data.zones.counts;
+      const tfLabel = { Q: 'Quarterly', M: 'Monthly', W: 'Weekly', psych: 'Round' };
+      const groupedByTf = { Q: [], M: [], W: [], psych: [] };
+      for (const z of zones) {
+        if (groupedByTf[z.timeframe]) groupedByTf[z.timeframe].push(z);
+      }
+      const showStrength = (s) => '★'.repeat(Math.min(5, Math.max(1, Math.round(s)))) + '☆'.repeat(5 - Math.min(5, Math.max(1, Math.round(s))));
+      legendEl.innerHTML = `
+        <div class="zones-legend-title">
+          Strong zones · ${counts.total} found
+          (${counts.resistance} resistance, ${counts.support} support)
+        </div>
+        ${['Q', 'M', 'W', 'psych'].map(t => {
+          const arr = groupedByTf[t];
+          if (!arr || arr.length === 0) return '';
+          // Show top 5 closest per timeframe
+          const top = arr.slice(0, 5);
+          return `
+            <div style="margin-top:8px">
+              <div style="color:var(--ink-2);font-size:10px;letter-spacing:0.08em;margin-bottom:4px">${tfLabel[t].toUpperCase()}</div>
+              ${top.map(z => `
+                <div class="zone-row">
+                  <span class="zone-pill tf-${z.timeframe}">${z.timeframe === 'psych' ? '◯' : z.timeframe}</span>
+                  <span class="zone-price">₹${z.price}</span>
+                  <span style="color:${z.type === 'resistance' ? 'var(--sell)' : z.type === 'support' ? 'var(--buy)' : 'var(--ink-3)'};min-width:80px">
+                    ${z.type === 'resistance' ? '↑ R' : z.type === 'support' ? '↓ S' : '— P'} ${z.kind === 'swing_high' ? '(swing)' : z.kind === 'swing_low' ? '(swing)' : z.kind === 'round_number' ? '(round)' : '(' + z.kind + ')'}
+                  </span>
+                  <span class="zone-strength" title="strength ${z.strength}/5">${showStrength(z.strength)}</span>
+                  <span class="zone-dist">${z.distancePct}% away</span>
+                  ${z.touches > 1 ? `<span style="color:var(--ink-3);font-size:10px">${z.touches}× touched</span>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }).join('')}
+      `;
+    }
   } catch (e) {
     el.innerHTML = '<div class="empty" style="padding:40px">Chart error: ' + e.message + '</div>';
   }
@@ -2972,7 +3109,7 @@ async function loadStatus() {
     html += '<div class="status-section-title">Diagnosis</div>';
     html += '<div style="font-family:JetBrains Mono;font-size:12px;color:var(--ink-2);line-height:1.7;padding:6px 0">';
     if (tdOk) {
-      html += '<span style="color:var(--buy)">✓ Twelve Data operational.</span> Pre-market should populate all 12 global cues. Bias will compute reliably.';
+      html += '<span style="color:var(--buy)">✓ Twelve Data operational.</span> Pre-market will populate 7 high-signal global cues (US indices, Nikkei, DAX, NIFTY, VIX). Bias will compute reliably.';
     } else if (!tdKeySet) {
       html += '<strong style="color:var(--sell)">⚠ TWELVEDATA_API_KEY environment variable not set.</strong><br><br>';
       html += '1. Sign up at <span style="color:var(--accent)">twelvedata.com</span> (free, no credit card)<br>';
