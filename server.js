@@ -1184,7 +1184,7 @@ app.get('/api/debug/system-status', async (req, res) => {
       results.upstreams.twelvedata = { ...probeCached, cached: true };
     } else {
       const { probeOneSymbol } = require('./twelvedata');
-      const probe = await probeOneSymbol(process.env.TWELVEDATA_API_KEY, 'DJI');
+      const probe = await probeOneSymbol(process.env.TWELVEDATA_API_KEY, 'DIA');
       const probeData = {
         ok: probe.ok,
         status: probe.status,

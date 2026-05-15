@@ -18,31 +18,34 @@ const TD_TIMEOUT_MS = 10_000;
 
 // Map our cue IDs to Twelve Data symbol strings.
 // Twelve Data symbol mapping for our cue IDs.
-// LIMITED TO 7 SYMBOLS to fit under free-tier 8 credits/minute limit.
-// (Twelve Data charges 1 credit per symbol queried, even in a batch.)
 //
-// Selected for highest signal-to-noise on Indian pre-market bias:
-//   US:     DJI, IXIC, SPX (US session sets overnight tone)
-//   ASIA:   N225 (Nikkei — Japan opens before India)
-//   EU:     GDAXI (DAX — European session crosses with India market open)
-//   INDIA:  NIFTY (proxy for GIFT Nifty)
-//   VOL:    VIX (global risk-off indicator)
+// KEY DECISION (Phase 12.7): Use ETF proxies instead of raw indices.
+// Free tier of Twelve Data has limited access to raw index symbols (DJI, SPX, IXIC)
+// because these are licensed market data. ETFs that track the indices ARE supported
+// because they're publicly traded stocks on US exchanges.
 //
-// Dropped (Phase 12.6) to fit free tier:
-//   HangSeng (redundant with N225 for Asian signal)
-//   FTSE (DAX is stronger EU proxy for India)
-//   BRENT (energy signal covered by news catalysts)
-//   DXY, USD/INR (FII flow effect already in T-1 FII/DII data)
+// Symbol → ETF mapping:
+//   Dow Jones    → DIA  (SPDR Dow Jones Industrial Average ETF)
+//   Nasdaq 100   → QQQ  (Invesco QQQ Trust)
+//   S&P 500      → SPY  (SPDR S&P 500 ETF)
+//   Nikkei       → EWJ  (iShares MSCI Japan ETF)
+//   DAX/Germany  → EWG  (iShares MSCI Germany ETF)
+//   Asia/EM      → EEM  (iShares MSCI Emerging Markets — Asian EM risk appetite,
+//                        slotted under HANGSENG cue ID since both proxy Asia)
 //
-// If user upgrades to Twelve Data Basic ($29/mo, 55 credits/min), restore all 12.
+// VIX and GIFT_NIFTY are NOT in this map — Fyers fallback handles both via
+// NSE:INDIAVIX-INDEX and NSE:NIFTY50-INDEX. This avoids conflict where Twelve
+// Data's US VIX (VXX) would overwrite proper India VIX.
+//
+// 6 symbols × 1 credit = 6 credits/batch, under 8/min free tier limit.
+// Daily usage: 6 × ~12 cache refreshes/day = ~72 credits, way under 800/day.
 const TD_SYMBOL_MAP = {
-  GIFT_NIFTY: 'NIFTY',     // India proxy
-  DOW: 'DJI',
-  NASDAQ: 'IXIC',
-  SP500: 'SPX',
-  NIKKEI: 'N225',
-  DAX: 'GDAXI',
-  VIX: 'VIX',
+  DOW: 'DIA',       // ETF tracking Dow Jones Industrial Average
+  NASDAQ: 'QQQ',    // ETF tracking Nasdaq 100
+  SP500: 'SPY',     // ETF tracking S&P 500
+  NIKKEI: 'EWJ',    // ETF tracking MSCI Japan
+  DAX: 'EWG',       // ETF tracking MSCI Germany
+  HANGSENG: 'EEM',  // iShares MSCI EM (proxy for Asian/India risk appetite)
 };
 
 /**
@@ -127,7 +130,7 @@ async function fetchAllCues(apiKey) {
  * Single-symbol fetch — used for diagnostic STATUS check.
  * Returns { ok, status, samplePrice, sampleSymbol, error? }.
  */
-async function probeOneSymbol(apiKey, symbol = 'DJI') {
+async function probeOneSymbol(apiKey, symbol = 'DIA') {
   if (!apiKey) return { ok: false, error: 'TWELVEDATA_API_KEY not set' };
   try {
     const url = `${TD_API_BASE}/quote?symbol=${symbol}&apikey=${apiKey}`;
