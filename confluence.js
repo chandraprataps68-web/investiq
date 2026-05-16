@@ -100,9 +100,9 @@ function scoreChartStructure({ analysis, zones }) {
   // Price > 20EMA > 50EMA, but 50<200 = mixed (50)
   // All inverted = strong downtrend (100 for bearish trade)
   const price = analysis?.price;
-  const e20 = analysis?.ema20?.slice(-1)?.[0];
-  const e50 = analysis?.ema50?.slice(-1)?.[0];
-  const e200 = analysis?.ema200?.slice(-1)?.[0];
+  const e20 = analysis?.ema20;   // fullAnalysis returns these as scalars, not arrays
+  const e50 = analysis?.ema50;
+  const e200 = analysis?.ema200;
   if (price && e20 && e50 && e200) {
     const stronglyUp = price > e20 && e20 > e50 && e50 > e200;
     const stronglyDown = price < e20 && e20 < e50 && e50 < e200;
