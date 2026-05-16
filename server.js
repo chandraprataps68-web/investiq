@@ -9,6 +9,7 @@ const { fyersModel } = require('fyers-api-v3');
 
 const TA = require('./ta');
 const Zones = require('./zones');
+const Confluence = require('./confluence');
 const { runScanner } = require('./scanner');
 const { getPreMarketSnapshot } = require('./premarket');
 const { fetchCrypto, fetchCryptoHistory, fetchCommodities } = require('./commodities');
@@ -233,9 +234,14 @@ async function getHistoryShortKey(fyersSym, resolution = 'D', days = 365) {
   if (cached) return cached;
   const fyers = getFyers();
 
-  // CRITICAL: Fyers daily history has a 366-day max per request.
-  // For longer ranges, we chunk and concatenate. For ≤365 days, single call.
-  const MAX_DAYS_PER_REQUEST = resolution === 'D' ? 365 : 30;
+  // CRITICAL: Fyers history accepts max ~366 calendar days per request, regardless
+  // of resolution. We chunk longer ranges and concatenate.
+  //   D → ~252 candles per chunk
+  //   W → ~52 candles per chunk
+  //   M → ~12 candles per chunk
+  // For longer history (W/M used in chart's 3-year and 10-year views),
+  // we chunk just like daily.
+  const MAX_DAYS_PER_REQUEST = 365;
 
   // cont_flag is for FUTURES continuous contracts (commodities, index futures).
   // For NSE equity symbols, NOT passing it is safer — some Fyers backends reject
@@ -291,6 +297,14 @@ async function getHistoryShortKey(fyersSym, resolution = 'D', days = 365) {
       t: c[0], o: c[1], h: c[2], l: c[3], c: c[4], v: c[5],
     }));
     allCandles.unshift(...chunk);
+
+    // Early exit: if this chunk is empty (after retry) and we already have some
+    // candles, we've likely hit the stock's pre-listing range. Don't waste calls
+    // on older periods. This is critical for W/M views of recently-listed stocks.
+    if (chunk.length === 0 && allCandles.length > 0) {
+      break;
+    }
+
     if (chunkStart <= nowSec - totalSec) break;
     chunkEnd = chunkStart - 86400;
     chunkStart = Math.max(nowSec - totalSec, chunkEnd - MAX_DAYS_PER_REQUEST * 86400);
@@ -416,21 +430,33 @@ app.get('/api/quote/:symbol', requireAuth, async (req, res) => {
 
 // Path-style history (auto-prefixes plain symbols to NSE:...-EQ)
 // Supports ?resolution=D|W|M and ?days=N for date range.
-// During market hours, appends/updates today's candle with live quote so
-// the chart reflects the current price (not yesterday's close).
+//
+// Fyers' history endpoint only documents 'D' and minute resolutions.
+// W and M are not officially supported, so we fetch DAILY candles for a
+// longer range and aggregate them server-side using the zones module's
+// aggregateCandles() helper. This is more reliable than relying on Fyers' W/M.
+//
+// During market hours on daily timeframe, appends/updates today's candle with
+// live quote so the chart reflects the current price (not yesterday's close).
 app.get('/api/history/:symbol', requireAuth, async (req, res) => {
   try {
     let sym = decodeURIComponent(req.params.symbol).toUpperCase();
     if (!sym.includes(':')) sym = toFyersEquity(sym);
-    const resolution = req.query.resolution || 'D';
-    // For W/M resolutions, request larger range so we have enough candles
-    const defaultDays = resolution === 'W' ? 365 * 3 : resolution === 'M' ? 365 * 10 : 365;
-    const days = parseInt(req.query.days || String(defaultDays), 10);
-    const candles = await getHistoryShortKey(sym, resolution, days);
+    const resolution = (req.query.resolution || 'D').toUpperCase();
 
-    // Chart accuracy fix: during market hours on daily timeframe, append live quote
-    // as today's candle so chart matches the header price.
-    if (resolution === 'D' && isMarketHours() && candles.length > 0) {
+    // Pick daily-source range to support the target resolution:
+    //   D → ~180 trading days = ~260 calendar days
+    //   W → ~3 years of daily so we get ~156 weekly candles after aggregation
+    //   M → ~10 years of daily so we get ~120 monthly candles
+    const defaultDays = resolution === 'W' ? 365 * 3 : resolution === 'M' ? 365 * 10 : 260;
+    const days = parseInt(req.query.days || String(defaultDays), 10);
+
+    // ALWAYS fetch daily from Fyers; aggregate if W/M requested.
+    let candles = await getHistoryShortKey(sym, 'D', days);
+
+    // Chart accuracy fix: during market hours append live quote so chart matches
+    // the header price. Only meaningful for daily / aggregated daily.
+    if (isMarketHours() && candles.length > 0) {
       try {
         const q = await getQuoteOne(sym);
         const live = q?.lp ?? q?.ltp;
@@ -438,12 +464,10 @@ app.get('/api/history/:symbol', requireAuth, async (req, res) => {
           const lastCandle = candles[candles.length - 1];
           const todayMidnightSec = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
           if (lastCandle.t >= todayMidnightSec) {
-            // Last candle is today's — update close + extend high/low if needed
             lastCandle.c = live;
             lastCandle.h = Math.max(lastCandle.h, live);
             lastCandle.l = Math.min(lastCandle.l, live);
           } else {
-            // Last candle is yesterday — append synthetic today candle
             candles.push({
               t: todayMidnightSec,
               o: q?.open_price ?? lastCandle.c,
@@ -455,6 +479,11 @@ app.get('/api/history/:symbol', requireAuth, async (req, res) => {
           }
         }
       } catch (_) { /* fall back to history-only */ }
+    }
+
+    // Aggregate to W or M if requested. Daily passthrough otherwise.
+    if (resolution === 'W' || resolution === 'M') {
+      candles = Zones.aggregateCandles(candles, resolution);
     }
 
     res.json({ symbol: sym, candles: toLongKeyCandles(candles), resolution });
@@ -481,7 +510,29 @@ app.get('/api/analyze/:symbol', requireAuth, async (req, res) => {
     const quote = await getQuoteOne(sym).catch(() => null);
     const currentPrice = quote?.lp ?? quote?.ltp ?? candles[candles.length - 1].c;
     const zones = Zones.buildZones(candles, currentPrice);
-    res.json({ ok: true, symbol: sym, quote, analysis: a, signal: sig, zones });
+
+    // Pull cached premarket snapshot so we can fold bias + catalysts into confluence.
+    // We re-use the existing cache (15-min TTL via /api/premarket).
+    // If cache is cold or fetch fails, confluence still computes — bias/catalyst
+    // components will fall back to "neutral" scoring (50).
+    let biasObj = null, catalystsObj = null;
+    const cachedPm = cacheGet('premarket');
+    if (cachedPm) {
+      biasObj = cachedPm.bias || null;
+      catalystsObj = cachedPm.catalysts || null;
+    }
+    // Plain symbol for confluence (remove NSE: and -EQ)
+    const plainSym = sym.replace(/^NSE:/, '').replace(/-EQ$/, '');
+    const confluence = Confluence.computeConfluence({
+      symbol: plainSym,
+      analysis: a,
+      signal: sig,
+      zones,
+      biasObj,
+      catalysts: catalystsObj,
+    });
+
+    res.json({ ok: true, symbol: sym, quote, analysis: a, signal: sig, zones, confluence });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
