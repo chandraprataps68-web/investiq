@@ -518,6 +518,102 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   .confluence-note { grid-area: note; }
 }
 
+/* Tracker tab */
+.tracker-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .tracker-grid { grid-template-columns: 1fr; }
+}
+.btn-small {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-3);
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.btn-small:hover { color: var(--ink-1); border-color: var(--accent); }
+.btn-small.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tracker-watchlist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-3);
+  border-radius: 3px;
+  margin-bottom: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.tracker-watchlist-row .sym { color: var(--ink-1); font-weight: 600; }
+.tracker-watchlist-row button {
+  background: none; border: none; color: var(--ink-3); cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 0 4px;
+}
+.tracker-watchlist-row button:hover { color: var(--sell); }
+.tracker-snap-table {
+  width: 100%;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  border-collapse: collapse;
+}
+.tracker-snap-table th {
+  background: var(--bg-3);
+  color: var(--ink-3);
+  font-weight: 500;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tracker-snap-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  white-space: nowrap;
+}
+.tracker-snap-table tr:hover td { background: rgba(255,255,255,0.02); }
+.tracker-snap-table .col-sym { color: var(--ink-1); font-weight: 600; }
+.tracker-snap-table .col-sig { font-weight: 600; }
+.tracker-snap-table .col-sig.STRONG\.BUY,
+.tracker-snap-table .col-sig.BUY { color: var(--buy); }
+.tracker-snap-table .col-sig.STRONG\.SELL,
+.tracker-snap-table .col-sig.SELL { color: var(--sell); }
+.tracker-snap-table .col-sig.HOLD { color: var(--hold); }
+.tracker-tier {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 14px;
+  text-align: center;
+}
+.tracker-tier.S, .tracker-tier.A { background: rgba(78,206,121,0.18); color: var(--buy); }
+.tracker-tier.B { background: rgba(255,184,0,0.18); color: var(--hold); }
+.tracker-tier.C { background: rgba(160,168,181,0.12); color: var(--ink-2); }
+.tracker-tier.D { background: rgba(255,107,107,0.15); color: var(--sell); }
+.tracker-session-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.tracker-session-pill.open { background: rgba(78,162,255,0.15); color: var(--accent); }
+.tracker-session-pill.close { background: rgba(255,184,0,0.15); color: var(--hold); }
+
 /* Timeframe toggle: D / W / M */
 .tf-toggle { display: inline-flex; gap: 2px; background: var(--bg-3); border-radius: 4px; padding: 2px; }
 .tf-btn {
@@ -641,6 +737,7 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   <button class="tab" data-tab="optscanner"><span class="tab-num">06</span>Options</button>
   <button class="tab" data-tab="backtest"><span class="tab-num">07</span>Backtest</button>
   <button class="tab" data-tab="intraday"><span class="tab-num">08</span>Intraday</button>
+  <button class="tab" data-tab="tracker"><span class="tab-num">09</span>Tracker</button>
 </nav>
 
 <main>
@@ -915,6 +1012,60 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   <div id="intra-content"><div class="empty">Loading intraday playbook...</div></div>
 </section>
 
+<!-- ════════════════ TAB 09 — TRACKER ════════════════ -->
+<section class="panel" id="panel-tracker">
+  <div class="panel-header">
+    <h2 class="panel-title">Tracker</h2>
+    <span class="panel-sub">Collect signals + price daily. Compare scanner vs confluence over 15 days. Saved in browser, exportable as CSV.</span>
+  </div>
+
+  <div class="tracker-grid">
+    <!-- Watchlist + actions panel -->
+    <div class="card">
+      <div class="card-title">Watchlist <span id="tracker-watchlist-count" style="color:var(--ink-3);font-weight:400;font-size:11px;margin-left:8px"></span></div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input id="tracker-add-input" type="text" placeholder="Type symbol (e.g. VEDL)" style="flex:1;background:var(--bg-3);border:1px solid var(--line);border-radius:4px;padding:8px 10px;color:var(--ink-1);font-family:'JetBrains Mono',monospace;font-size:12px" onkeydown="if(event.key==='Enter')trackerAddSymbol()">
+        <button class="btn" onclick="trackerAddSymbol()">Add</button>
+      </div>
+      <div id="tracker-watchlist"></div>
+
+      <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px">
+        <div class="card-title" style="margin-bottom:8px">Actions</div>
+        <button class="btn btn-primary" id="tracker-snap-open-btn" onclick="trackerTakeSnapshot('open')" style="width:100%;margin-bottom:6px">📸 Take OPEN Snapshot</button>
+        <button class="btn btn-primary" id="tracker-snap-close-btn" onclick="trackerTakeSnapshot('close')" style="width:100%;margin-bottom:6px">📸 Take CLOSE Snapshot</button>
+        <button class="btn" onclick="trackerExportCSV()" style="width:100%;margin-bottom:6px">⬇ Download CSV</button>
+        <button class="btn" onclick="trackerClearAll()" style="width:100%;color:var(--sell)">🗑 Clear All Data</button>
+        <div id="tracker-action-status" style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-top:8px;min-height:14px"></div>
+      </div>
+
+      <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px">
+        <div class="card-title" style="margin-bottom:8px">Stats</div>
+        <div id="tracker-stats" style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;line-height:1.7"></div>
+      </div>
+    </div>
+
+    <!-- Snapshots table -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="card-title" style="margin:0">Snapshots</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn-small tracker-filter-btn active" data-filter="all" onclick="trackerSetFilter('all')">All</button>
+          <button class="btn-small tracker-filter-btn" data-filter="open" onclick="trackerSetFilter('open')">Open</button>
+          <button class="btn-small tracker-filter-btn" data-filter="close" onclick="trackerSetFilter('close')">Close</button>
+          <button class="btn-small tracker-filter-btn" data-filter="latest" onclick="trackerSetFilter('latest')">Latest only</button>
+        </div>
+      </div>
+      <div id="tracker-snapshots"></div>
+    </div>
+  </div>
+
+  <div style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-top:14px;padding:10px 12px;background:rgba(255,255,255,.02);border-radius:4px;line-height:1.7">
+    <strong style="color:var(--accent)">How to use:</strong> Add 5-10 stocks to your watchlist. Click "Take OPEN Snapshot" once at market open (9:30 AM), and "Take CLOSE Snapshot" at market close (3:30 PM). Do this for 15 days. Then download the CSV and analyse which signal combos (scanner + confluence + bias) predicted profitable movement.<br>
+    <strong style="color:var(--hold)">Auto-snapshot:</strong> When you open this tab during market hours (9:15-10:00 AM or 15:00-15:45 PM), the app auto-captures if you haven't already taken today's snapshot for that session. Manual button always works.<br>
+    <strong style="color:var(--ink-2)">Storage:</strong> All data lives in this browser's localStorage. Clearing browser data deletes it. Download CSV regularly to keep a backup.
+  </div>
+</section>
+
 </main>
 
 <script>
@@ -932,6 +1083,7 @@ document.querySelectorAll('.tab').forEach(t => {
     if (tab === 'optscanner' && !window.__optLoaded) loadOptionScanner();
     if (tab === 'backtest') loadBacktest(); // always reload since stats accrue
     if (tab === 'intraday') loadIntraday(); // always reload — refreshes intraday
+    if (tab === 'tracker') loadTracker();
   });
 });
 
@@ -3367,6 +3519,412 @@ document.getElementById('status-flush').addEventListener('click', async () => {
 statusModal.addEventListener('click', (e) => {
   if (e.target === statusModal) statusModal.classList.remove('open');
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ═════════════════════ TRACKER (Tab 09) ════════════════════════
+// ═══════════════════════════════════════════════════════════════
+//
+// Data collection tool. NOT a trading tool. Records signals + price for
+// watchlist stocks at market open and close, persists to localStorage.
+// User exports CSV after 15 days to analyse which signal combos predict
+// profitable movement.
+//
+// Storage schema (localStorage key 'investiq_tracker_v1'):
+//   {
+//     watchlist: ["VEDL", "TCS", ...],     // max 10
+//     snapshots: [<snapshot>, ...],         // append-only
+//     version: 1
+//   }
+//
+// Each snapshot has fields matching /api/tracker/snapshot/:symbol response,
+// plus { id, date, time, session }.
+
+const TRACKER_KEY = 'investiq_tracker_v1';
+const TRACKER_MAX_WATCHLIST = 10;
+
+function trackerLoad() {
+  try {
+    const raw = localStorage.getItem(TRACKER_KEY);
+    if (!raw) return { watchlist: [], snapshots: [], version: 1 };
+    const data = JSON.parse(raw);
+    // Defensive: make sure shape is right
+    if (!Array.isArray(data.watchlist)) data.watchlist = [];
+    if (!Array.isArray(data.snapshots)) data.snapshots = [];
+    return data;
+  } catch (e) {
+    console.warn('[tracker] failed to load:', e);
+    return { watchlist: [], snapshots: [], version: 1 };
+  }
+}
+
+function trackerSave(data) {
+  try {
+    localStorage.setItem(TRACKER_KEY, JSON.stringify(data));
+  } catch (e) {
+    // Quota exceeded? Tell the user.
+    trackerStatus('⚠ Storage full. Download CSV and clear data.', 'sell');
+  }
+}
+
+// Status line under action buttons
+function trackerStatus(msg, kind) {
+  const el = document.getElementById('tracker-action-status');
+  if (!el) return;
+  const color = kind === 'sell' ? 'var(--sell)'
+              : kind === 'buy' ? 'var(--buy)'
+              : kind === 'hold' ? 'var(--hold)'
+              : 'var(--ink-3)';
+  el.style.color = color;
+  el.textContent = msg;
+  // Clear after 6 seconds for success messages
+  if (kind === 'buy') setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 6000);
+}
+
+// Filter state for snapshots table
+window.__trackerFilter = 'all';
+
+function trackerSetFilter(filter) {
+  window.__trackerFilter = filter;
+  document.querySelectorAll('.tracker-filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === filter);
+  });
+  trackerRenderSnapshots();
+}
+
+function loadTracker() {
+  trackerRenderWatchlist();
+  trackerRenderSnapshots();
+  trackerRenderStats();
+  trackerMaybeAutoSnapshot();
+}
+
+// ─── Watchlist management ─────
+function trackerAddSymbol() {
+  const input = document.getElementById('tracker-add-input');
+  const sym = (input.value || '').trim().toUpperCase().replace(/[^A-Z0-9_\-&]/g, '');
+  if (!sym) return;
+  const data = trackerLoad();
+  if (data.watchlist.includes(sym)) {
+    trackerStatus(`${sym} already in watchlist`, 'hold');
+    return;
+  }
+  if (data.watchlist.length >= TRACKER_MAX_WATCHLIST) {
+    trackerStatus(`Watchlist full (${TRACKER_MAX_WATCHLIST} max). Remove one first.`, 'sell');
+    return;
+  }
+  data.watchlist.push(sym);
+  trackerSave(data);
+  input.value = '';
+  trackerStatus(`Added ${sym}`, 'buy');
+  trackerRenderWatchlist();
+}
+
+function trackerRemoveSymbol(sym) {
+  const data = trackerLoad();
+  data.watchlist = data.watchlist.filter(s => s !== sym);
+  trackerSave(data);
+  trackerRenderWatchlist();
+}
+
+function trackerRenderWatchlist() {
+  const data = trackerLoad();
+  const el = document.getElementById('tracker-watchlist');
+  const countEl = document.getElementById('tracker-watchlist-count');
+  if (!el) return;
+  if (countEl) countEl.textContent = `(${data.watchlist.length}/${TRACKER_MAX_WATCHLIST})`;
+  if (data.watchlist.length === 0) {
+    el.innerHTML = '<div style="color:var(--ink-3);font-size:11px;font-family:JetBrains Mono,monospace;text-align:center;padding:12px 0">No stocks added yet</div>';
+    return;
+  }
+  el.innerHTML = data.watchlist.map(sym => `
+    <div class="tracker-watchlist-row">
+      <span class="sym">${sym}</span>
+      <button onclick="trackerRemoveSymbol('${sym}')" title="Remove">×</button>
+    </div>
+  `).join('');
+}
+
+// ─── Snapshot capture ─────
+async function trackerTakeSnapshot(session) {
+  const data = trackerLoad();
+  if (data.watchlist.length === 0) {
+    trackerStatus('Add stocks to watchlist first', 'hold');
+    return;
+  }
+  const btn = document.getElementById(`tracker-snap-${session}-btn`);
+  if (btn) { btn.disabled = true; btn.textContent = `Capturing ${session.toUpperCase()}...`; }
+
+  const today = new Date().toISOString().substring(0, 10);
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+  let added = 0, failed = 0;
+  const failures = [];
+  for (const sym of data.watchlist) {
+    // Skip if we already have THIS session's snapshot for THIS day for THIS stock
+    const exists = data.snapshots.some(s => s.date === today && s.session === session && s.symbol === sym);
+    if (exists) continue;
+    try {
+      const res = await fetch(`/api/tracker/snapshot/${encodeURIComponent(sym)}`);
+      const payload = await res.json();
+      if (!payload.ok) {
+        failed++;
+        failures.push(`${sym}: ${payload.reason || payload.error || 'unknown'}`);
+        continue;
+      }
+      const snap = {
+        id: `${today}-${sym}-${session}`,
+        date: today,
+        time: hhmm,
+        session,
+        ...payload, // includes symbol, price, scanner_*, confluence_*, etc.
+      };
+      data.snapshots.push(snap);
+      added++;
+    } catch (e) {
+      failed++;
+      failures.push(`${sym}: ${e.message}`);
+    }
+  }
+  trackerSave(data);
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = session === 'open' ? '📸 Take OPEN Snapshot' : '📸 Take CLOSE Snapshot';
+  }
+  if (added > 0) {
+    trackerStatus(`Captured ${added} stocks${failed ? ` (${failed} failed)` : ''}`, 'buy');
+  } else if (failed > 0) {
+    trackerStatus(`All ${failed} failed: ${failures[0]}`, 'sell');
+    console.warn('[tracker] failures:', failures);
+  } else {
+    trackerStatus('Already captured today for this session', 'hold');
+  }
+  trackerRenderSnapshots();
+  trackerRenderStats();
+}
+
+// ─── Auto-snapshot: only when tab opened during market windows ─────
+// Two windows: 9:15-10:00 AM (open) and 15:00-15:45 PM (close). IST.
+// If user hasn't already taken today's snapshot for that session, auto-trigger.
+function trackerMaybeAutoSnapshot() {
+  const now = new Date();
+  // Render runs in UTC; we're showing IST to user. Convert.
+  const istOffsetMin = 330; // IST is UTC+5:30
+  const istMin = (now.getUTCHours() * 60 + now.getUTCMinutes() + istOffsetMin) % (24 * 60);
+  const todayIST = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes() + istOffsetMin));
+  const dateStr = todayIST.toISOString().substring(0, 10);
+
+  // Open window: 09:15 (555) — 10:00 (600)
+  const inOpenWindow = istMin >= 555 && istMin <= 600;
+  // Close window: 15:00 (900) — 15:45 (945)
+  const inCloseWindow = istMin >= 900 && istMin <= 945;
+  if (!inOpenWindow && !inCloseWindow) return;
+
+  const session = inOpenWindow ? 'open' : 'close';
+  const data = trackerLoad();
+  if (data.watchlist.length === 0) return;
+
+  // Already took THIS session's snapshot for ANY stock today? Skip auto.
+  // (Catch missed snapshots by retrying, but don't spam.)
+  const tookToday = data.snapshots.some(s => s.date === dateStr && s.session === session);
+  if (tookToday) return;
+
+  trackerStatus(`Auto-capturing ${session.toUpperCase()} snapshot...`, 'hold');
+  setTimeout(() => trackerTakeSnapshot(session), 1000);
+}
+
+// ─── Snapshots table render ─────
+function trackerRenderSnapshots() {
+  const data = trackerLoad();
+  const el = document.getElementById('tracker-snapshots');
+  if (!el) return;
+  const filter = window.__trackerFilter || 'all';
+
+  let snaps = data.snapshots.slice(); // copy
+  if (filter === 'open') snaps = snaps.filter(s => s.session === 'open');
+  else if (filter === 'close') snaps = snaps.filter(s => s.session === 'close');
+  else if (filter === 'latest') {
+    // Most recent snapshot per (symbol, session) — collapses repeated days
+    const seen = new Set();
+    const latest = [];
+    // Iterate newest first
+    for (const s of [...snaps].sort((a, b) => (b.date + b.session).localeCompare(a.date + a.session))) {
+      const key = `${s.symbol}-${s.session}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      latest.push(s);
+    }
+    snaps = latest;
+  }
+
+  if (snaps.length === 0) {
+    el.innerHTML = '<div style="color:var(--ink-3);font-size:11px;font-family:JetBrains Mono,monospace;text-align:center;padding:30px">No snapshots yet. Add stocks to watchlist and click "Take OPEN/CLOSE Snapshot".</div>';
+    return;
+  }
+
+  // Newest first
+  snaps.sort((a, b) => {
+    const k1 = a.date + a.session;
+    const k2 = b.date + b.session;
+    return k2.localeCompare(k1);
+  });
+
+  // For movement: compute returns where we have paired open/close on same day,
+  // and overnight close→next-day-open per stock.
+  const byKey = {};
+  for (const s of data.snapshots) byKey[`${s.date}-${s.symbol}-${s.session}`] = s;
+
+  // Build rows
+  const rows = snaps.map(s => {
+    const sigCls = (s.scanner_signal || '').replace(/\s/g, '.');
+    const tierCls = s.confluence_tier || 'C';
+
+    // Daily return = open → close (same day, same symbol)
+    let dayReturn = null;
+    if (s.session === 'close') {
+      const openSnap = byKey[`${s.date}-${s.symbol}-open`];
+      if (openSnap && openSnap.price && s.price) {
+        dayReturn = ((s.price - openSnap.price) / openSnap.price) * 100;
+      }
+    }
+    // Overnight return = previous day close → today open (same symbol)
+    let overnightReturn = null;
+    if (s.session === 'open') {
+      // Find the previous close for this symbol — most recent close strictly before today
+      let prevClose = null;
+      for (const candidate of data.snapshots) {
+        if (candidate.symbol !== s.symbol || candidate.session !== 'close') continue;
+        if (candidate.date >= s.date) continue;
+        if (!prevClose || candidate.date > prevClose.date) prevClose = candidate;
+      }
+      if (prevClose && prevClose.price && s.price) {
+        overnightReturn = ((s.price - prevClose.price) / prevClose.price) * 100;
+      }
+    }
+
+    const fmtRet = (r) => {
+      if (r == null) return '<span style="color:var(--ink-3)">—</span>';
+      const cls = r > 0 ? 'var(--buy)' : r < 0 ? 'var(--sell)' : 'var(--ink-2)';
+      return `<span style="color:${cls}">${r > 0 ? '+' : ''}${r.toFixed(2)}%</span>`;
+    };
+
+    return `
+      <tr>
+        <td><span class="tracker-session-pill ${s.session}">${s.session.toUpperCase()}</span></td>
+        <td>${s.date}</td>
+        <td><span class="col-sym">${s.symbol}</span></td>
+        <td>₹${(s.price || 0).toFixed(2)}</td>
+        <td class="col-sig ${sigCls}">${s.scanner_signal || '—'}</td>
+        <td>${s.confluence_score != null ? s.confluence_score : '—'}</td>
+        <td><span class="tracker-tier ${tierCls}">${s.confluence_tier || '—'}</span></td>
+        <td style="color:var(--ink-3)">${s.market_bias || '—'}</td>
+        <td>${fmtRet(dayReturn)}</td>
+        <td>${fmtRet(overnightReturn)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="overflow-x:auto">
+      <table class="tracker-snap-table">
+        <thead>
+          <tr>
+            <th>Session</th><th>Date</th><th>Symbol</th><th>Price</th>
+            <th>Scanner</th><th>Conf</th><th>Tier</th><th>Bias</th>
+            <th>Day Δ</th><th>O/N Δ</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+// ─── Stats panel ─────
+function trackerRenderStats() {
+  const data = trackerLoad();
+  const el = document.getElementById('tracker-stats');
+  if (!el) return;
+
+  const dates = [...new Set(data.snapshots.map(s => s.date))].sort();
+  const opens = data.snapshots.filter(s => s.session === 'open').length;
+  const closes = data.snapshots.filter(s => s.session === 'close').length;
+  const oldestDate = dates[0] || null;
+  const newestDate = dates[dates.length - 1] || null;
+
+  // Storage usage estimate
+  let storageKb = 0;
+  try {
+    const raw = localStorage.getItem(TRACKER_KEY) || '';
+    storageKb = Math.round(new Blob([raw]).size / 1024 * 10) / 10;
+  } catch (_) {}
+
+  el.innerHTML = `
+    Days tracked: <span style="color:var(--ink-1)">${dates.length}</span> / 15<br>
+    Total snapshots: <span style="color:var(--ink-1)">${data.snapshots.length}</span><br>
+    Opens: ${opens} · Closes: ${closes}<br>
+    ${oldestDate ? `From: ${oldestDate}<br>To: ${newestDate}<br>` : ''}
+    Storage: ${storageKb} KB
+  `;
+}
+
+// ─── CSV export ─────
+function trackerExportCSV() {
+  const data = trackerLoad();
+  if (data.snapshots.length === 0) {
+    trackerStatus('No snapshots to export', 'hold');
+    return;
+  }
+
+  // CSV columns chosen for analysis. Order matters — pivot-friendly columns first.
+  const columns = [
+    'id', 'date', 'time', 'session', 'symbol', 'price', 'changePct',
+    'scanner_signal', 'scanner_confidence',
+    'confluence_score', 'confluence_tier',
+    'confluence_chart', 'confluence_bias', 'confluence_catalyst', 'confluence_technicals', 'confluence_liquidity',
+    'rsi', 'macd_bullish', 'volume_ratio', 'trend_score', 'dist_from_52wh_pct',
+    'market_bias', 'market_bias_score',
+    'nearest_zone_price', 'nearest_zone_type', 'nearest_zone_dist_pct',
+    'capturedAt',
+  ];
+
+  // Build CSV
+  const escape = (v) => {
+    if (v == null) return '';
+    const s = String(v);
+    // Quote if contains comma, quote, or newline
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  };
+  const header = columns.join(',');
+  const rows = data.snapshots.map(s => columns.map(c => escape(s[c])).join(','));
+  const csv = header + '\n' + rows.join('\n');
+
+  // Trigger download
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().substring(0, 10);
+  a.href = url;
+  a.download = `investiq-tracker-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  trackerStatus(`Exported ${data.snapshots.length} snapshots`, 'buy');
+}
+
+function trackerClearAll() {
+  const confirm1 = window.confirm('Delete ALL tracker data (watchlist + snapshots)? This cannot be undone. Make sure you have exported the CSV first.');
+  if (!confirm1) return;
+  const confirm2 = window.confirm('Last warning — type-confirm by clicking OK to permanently delete all tracker data.');
+  if (!confirm2) return;
+  localStorage.removeItem(TRACKER_KEY);
+  trackerStatus('All tracker data cleared', 'hold');
+  trackerRenderWatchlist();
+  trackerRenderSnapshots();
+  trackerRenderStats();
+}
 
 </script>
 </body>
