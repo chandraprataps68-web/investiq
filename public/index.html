@@ -419,6 +419,105 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
 
 #chart { height: 420px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; }
 
+/* Confluence Score panel — shown above the chart/targets row */
+.confluence-panel {
+  margin: 16px 0;
+  padding: 20px 24px;
+  border-radius: 6px;
+}
+.confluence-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.confluence-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 22px;
+  color: var(--ink-1);
+  font-weight: 600;
+}
+.confluence-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+.confluence-score-big {
+  text-align: right;
+}
+.confluence-num {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1;
+}
+.confluence-tier {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.confluence-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.confluence-row {
+  display: grid;
+  grid-template-columns: 160px 1fr 80px 50px 1fr;
+  align-items: center;
+  gap: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  padding: 4px 0;
+}
+.confluence-label {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.confluence-bar-wrap {
+  background: rgba(255,255,255,0.04);
+  border-radius: 2px;
+  height: 6px;
+  position: relative;
+  overflow: hidden;
+}
+.confluence-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+.confluence-score {
+  color: var(--ink-1);
+  font-weight: 600;
+  text-align: right;
+}
+.confluence-weight {
+  color: var(--ink-3);
+  font-size: 11px;
+  text-align: right;
+}
+.confluence-note {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-style: italic;
+}
+@media (max-width: 900px) {
+  .confluence-row {
+    grid-template-columns: 130px 1fr 60px;
+    grid-template-areas: "label bar score" "note note note";
+  }
+  .confluence-label { grid-area: label; }
+  .confluence-bar-wrap { grid-area: bar; }
+  .confluence-score { grid-area: score; }
+  .confluence-weight { display: none; }
+  .confluence-note { grid-area: note; }
+}
+
 /* Timeframe toggle: D / W / M */
 .tf-toggle { display: inline-flex; gap: 2px; background: var(--bg-3); border-radius: 4px; padding: 2px; }
 .tf-btn {
@@ -1258,6 +1357,8 @@ function renderStock(data) {
       <div class="signal-large signal-pill ${sig.signal.replace(/\s/g,'.')}">${sig.signal}</div>
     </div>
 
+    ${renderConfluence(data.confluence)}
+
     <div class="grid grid-12">
       <div class="card col-8">
         <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
@@ -1329,6 +1430,109 @@ function renderTargets(targets) {
         </div>
       `;
     }).join('')}
+  `;
+}
+
+// ─── Confluence Score panel ─────
+// Displays the composite 0-100 score with full breakdown for auditability.
+// Never just shows the number — always shows WHY.
+function renderConfluence(conf) {
+  if (!conf || conf.score == null) return '';
+
+  // Tier styling
+  const tierColors = {
+    S: { color: 'var(--buy)', bg: 'rgba(78,206,121,0.18)', label: 'EXCEPTIONAL' },
+    A: { color: 'var(--buy)', bg: 'rgba(78,206,121,0.10)', label: 'STRONG' },
+    B: { color: 'var(--hold)', bg: 'rgba(255,184,0,0.10)', label: 'MARGINAL' },
+    C: { color: 'var(--ink-3)', bg: 'rgba(160,168,181,0.08)', label: 'WEAK' },
+    D: { color: 'var(--sell)', bg: 'rgba(255,107,107,0.10)', label: 'AVOID' },
+  };
+  const t = tierColors[conf.tier] || tierColors.C;
+
+  // Component rows
+  const componentLabels = {
+    chartStructure: 'Chart structure',
+    biasAlignment:  'Bias alignment',
+    catalystImpact: 'Catalyst impact',
+    technicals:     'Technical signals',
+    liquidity:      'Liquidity',
+  };
+  const componentNotes = {
+    chartStructure: (bd) => {
+      const parts = [];
+      if (bd.trendTemplate >= 75) parts.push('trend strong');
+      else if (bd.trendTemplate >= 50) parts.push('trend mixed');
+      else parts.push('trend weak');
+      if (bd.zoneProximity >= 70) parts.push('near key zone');
+      if (bd.mtfAlignment >= 90) parts.push('all timeframes aligned');
+      else if (bd.mtfAlignment >= 60) parts.push('partial alignment');
+      return parts.join(', ');
+    },
+    biasAlignment: (bd) => {
+      if (bd.reason) return bd.reason;
+      if (!bd.marketBias) return 'unknown';
+      return `${bd.stockSignal} on ${bd.marketBias.toLowerCase()} market`;
+    },
+    catalystImpact: (bd) => {
+      if (bd.reason) return bd.reason;
+      if (bd.affectingCatalysts) return `${bd.sector} sector, ${bd.affectingCatalysts}`;
+      return '';
+    },
+    technicals: (bd) => {
+      const parts = [];
+      if (bd.rsi >= 80) parts.push('RSI optimal');
+      else if (bd.rsi >= 60) parts.push('RSI ok');
+      else parts.push('RSI weak');
+      if (bd.macd >= 80) parts.push('MACD confirms');
+      else if (bd.macd <= 30) parts.push('MACD conflicts');
+      if (bd.volume >= 80) parts.push('volume strong');
+      else if (bd.volume <= 30) parts.push('volume weak');
+      return parts.join(', ');
+    },
+    liquidity: (bd) => {
+      const parts = [];
+      if (bd.volume >= 80) parts.push('volume normal+');
+      else if (bd.volume <= 30) parts.push('thin');
+      if (bd.rangePosition >= 80) parts.push('mid-range');
+      else if (bd.rangePosition <= 60) parts.push('near extreme');
+      return parts.join(', ');
+    },
+  };
+
+  const componentRows = Object.entries(conf.components).map(([key, comp]) => {
+    const score = comp.score;
+    const barWidth = score; // 0-100
+    const barColor = score >= 80 ? 'var(--buy)' : score >= 55 ? 'var(--hold)' : 'var(--sell)';
+    const note = componentNotes[key] ? componentNotes[key](comp.breakdown) : '';
+    return `
+      <div class="confluence-row">
+        <div class="confluence-label">${componentLabels[key] || key}</div>
+        <div class="confluence-bar-wrap">
+          <div class="confluence-bar" style="width:${barWidth}%;background:${barColor}"></div>
+        </div>
+        <div class="confluence-score">${score}<span style="color:var(--ink-3);font-size:10px">/100</span></div>
+        <div class="confluence-weight">×${comp.weight}%</div>
+        <div class="confluence-note">${note}</div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="confluence-panel" style="background:${t.bg};border-left:3px solid ${t.color}">
+      <div class="confluence-header">
+        <div>
+          <div class="confluence-title">Confluence Score</div>
+          <div class="confluence-sub">Combined view: chart + bias + catalysts + technicals + liquidity</div>
+        </div>
+        <div class="confluence-score-big">
+          <div class="confluence-num" style="color:${t.color}">${conf.score}<span style="color:var(--ink-3);font-size:18px">/100</span></div>
+          <div class="confluence-tier" style="color:${t.color}">Tier ${conf.tier} · ${t.label}</div>
+        </div>
+      </div>
+      <div class="confluence-body">
+        ${componentRows}
+      </div>
+    </div>
   `;
 }
 
