@@ -536,6 +536,105 @@ app.get('/api/analyze/:symbol', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Tracker: flattened snapshot for daily data collection ──
+//
+// Returns a compact, flat payload optimized for storage in browser localStorage.
+// Re-uses the same analysis pipeline as /api/analyze but strips heavy fields
+// (candles, full TA arrays, zone metadata) that aren't needed for tracking.
+//
+// Used by the Tracker tab to save a point-in-time record for each watchlist
+// stock at market open and close. Data is intentionally flat so CSV export
+// is trivial.
+app.get('/api/tracker/snapshot/:symbol', requireAuth, async (req, res) => {
+  try {
+    let sym = decodeURIComponent(req.params.symbol).toUpperCase();
+    if (!sym.includes(':')) sym = toFyersEquity(sym);
+    const candles = await getHistoryShortKey(sym, 'D', 400);
+    if (!candles || candles.length < 30) {
+      return res.json({
+        ok: false,
+        symbol: sym,
+        reason: `Insufficient data for ${sym} (${candles?.length || 0} candles)`,
+      });
+    }
+    const a = TA.fullAnalysis(candles);
+    const sig = TA.generateSignal(a);
+    const quote = await getQuoteOne(sym).catch(() => null);
+    const currentPrice = quote?.lp ?? quote?.ltp ?? candles[candles.length - 1].c;
+    const zones = Zones.buildZones(candles, currentPrice);
+
+    let biasObj = null, catalystsObj = null;
+    const cachedPm = cacheGet('premarket');
+    if (cachedPm) {
+      biasObj = cachedPm.bias || null;
+      catalystsObj = cachedPm.catalysts || null;
+    }
+    const plainSym = sym.replace(/^NSE:/, '').replace(/-EQ$/, '');
+    const confluence = Confluence.computeConfluence({
+      symbol: plainSym, analysis: a, signal: sig, zones, biasObj, catalysts: catalystsObj,
+    });
+
+    // Flatten to a single record (no nesting deeper than 1)
+    res.json({
+      ok: true,
+      symbol: plainSym,
+      capturedAt: new Date().toISOString(),
+      price: currentPrice,
+      changePct: quote?.chp ?? null,
+      // Scanner side
+      scanner_signal: sig.signal,
+      scanner_confidence: sig.confidence,
+      // Confluence side
+      confluence_score: confluence.score,
+      confluence_tier: confluence.tier,
+      confluence_chart: confluence.components.chartStructure.score,
+      confluence_bias: confluence.components.biasAlignment.score,
+      confluence_catalyst: confluence.components.catalystImpact.score,
+      confluence_technicals: confluence.components.technicals.score,
+      confluence_liquidity: confluence.components.liquidity.score,
+      // TA snapshot
+      rsi: a.rsi14 != null ? Math.round(a.rsi14 * 10) / 10 : null,
+      macd_bullish: a.macd?.bullish ?? null,
+      volume_ratio: a.volume?.ratio != null ? Math.round(a.volume.ratio * 100) / 100 : null,
+      trend_score: a.trend?.score ?? null,
+      dist_from_52wh_pct: a.ftw?.distFromHighPct != null ? Math.round(a.ftw.distFromHighPct * 10) / 10 : null,
+      // Market context
+      market_bias: biasObj?.bias || null,
+      market_bias_score: biasObj?.score ?? null,
+      // Nearest S/R zone for reference
+      nearest_zone_price: zones.zones?.[0]?.price ?? null,
+      nearest_zone_type: zones.zones?.[0]?.type ?? null,
+      nearest_zone_dist_pct: zones.zones?.[0]?.distancePct ?? null,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Lightweight current-price endpoint for movement updates.
+// When the tracker needs to refresh "today's close" or "next day open" without
+// re-running full analysis, it calls this — just the price + change.
+app.get('/api/tracker/quote/:symbol', requireAuth, async (req, res) => {
+  try {
+    let sym = decodeURIComponent(req.params.symbol).toUpperCase();
+    if (!sym.includes(':')) sym = toFyersEquity(sym);
+    const q = await getQuoteOne(sym);
+    res.json({
+      ok: true,
+      symbol: sym.replace(/^NSE:/, '').replace(/-EQ$/, ''),
+      price: q?.lp ?? q?.ltp ?? null,
+      changePct: q?.chp ?? null,
+      open: q?.open_price ?? null,
+      high: q?.high_price ?? null,
+      low: q?.low_price ?? null,
+      prevClose: q?.prev_close_price ?? null,
+      capturedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Universe search (autocomplete) — uses extended ~200 symbol list
 app.get('/api/universe', (req, res) => {
   const q = (req.query.q || '').toUpperCase();
