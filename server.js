@@ -10,6 +10,7 @@ const { fyersModel } = require('fyers-api-v3');
 const TA = require('./ta');
 const Zones = require('./zones');
 const Confluence = require('./confluence');
+const SignalQuality = require('./signalQuality');
 const { runScanner } = require('./scanner');
 const { getPreMarketSnapshot } = require('./premarket');
 const { fetchCrypto, fetchCryptoHistory, fetchCommodities } = require('./commodities');
@@ -530,7 +531,34 @@ app.get('/api/analyze/:symbol', requireAuth, async (req, res) => {
       catalysts: catalystsObj,
     });
 
-    res.json({ ok: true, symbol: sym, quote, analysis: a, signal: sig, zones, confluence });
+    // ─── Phase 15A: signal quality enrichment ──
+    // Resistance cluster + volume character + invalidation.
+    // We fold the adjustment into confluence (within bounds) and surface the
+    // block flag so frontend can show a "BUY blocked" warning.
+    const signalQuality = SignalQuality.enrichSignalQuality({
+      candles,
+      currentPrice,
+      zones,
+      signal: sig.signal,
+      atr14: a.atr14,
+    });
+    // Apply adjustment to confluence (clamp to 0-100). Note we keep the ORIGINAL
+    // score available too so user can see what changed.
+    confluence.scoreBefore15A = confluence.score;
+    confluence.score = Math.max(0, Math.min(100, confluence.score + signalQuality.confluenceAdjustment));
+    confluence.adjustment15A = signalQuality.confluenceAdjustment;
+    // Re-evaluate tier with new score
+    confluence.tier =
+      confluence.score >= 85 ? 'S' :
+      confluence.score >= 70 ? 'A' :
+      confluence.score >= 55 ? 'B' :
+      confluence.score >= 40 ? 'C' : 'D';
+
+    res.json({
+      ok: true, symbol: sym, quote,
+      analysis: a, signal: sig, zones, confluence,
+      signalQuality, // new in Phase 15A
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -571,6 +599,16 @@ app.get('/api/tracker/snapshot/:symbol', requireAuth, async (req, res) => {
     const confluence = Confluence.computeConfluence({
       symbol: plainSym, analysis: a, signal: sig, zones, biasObj, catalysts: catalystsObj,
     });
+    // Phase 15A enrichment — same as /api/analyze
+    const signalQuality = SignalQuality.enrichSignalQuality({
+      candles, currentPrice, zones, signal: sig.signal, atr14: a.atr14,
+    });
+    const confluenceScoreAdjusted = Math.max(0, Math.min(100, confluence.score + signalQuality.confluenceAdjustment));
+    const tierAdjusted =
+      confluenceScoreAdjusted >= 85 ? 'S' :
+      confluenceScoreAdjusted >= 70 ? 'A' :
+      confluenceScoreAdjusted >= 55 ? 'B' :
+      confluenceScoreAdjusted >= 40 ? 'C' : 'D';
 
     // Flatten to a single record (no nesting deeper than 1)
     res.json({
@@ -582,9 +620,13 @@ app.get('/api/tracker/snapshot/:symbol', requireAuth, async (req, res) => {
       // Scanner side
       scanner_signal: sig.signal,
       scanner_confidence: sig.confidence,
-      // Confluence side
-      confluence_score: confluence.score,
-      confluence_tier: confluence.tier,
+      // Confluence side — both BEFORE and AFTER Phase 15A adjustments,
+      // so the 15-day analysis can compare which version predicted better
+      confluence_score: confluenceScoreAdjusted,
+      confluence_tier: tierAdjusted,
+      confluence_score_raw: confluence.score,         // before 15A adjustment
+      confluence_tier_raw: confluence.tier,
+      confluence_adjustment: signalQuality.confluenceAdjustment,
       confluence_chart: confluence.components.chartStructure.score,
       confluence_bias: confluence.components.biasAlignment.score,
       confluence_catalyst: confluence.components.catalystImpact.score,
@@ -603,6 +645,16 @@ app.get('/api/tracker/snapshot/:symbol', requireAuth, async (req, res) => {
       nearest_zone_price: zones.zones?.[0]?.price ?? null,
       nearest_zone_type: zones.zones?.[0]?.type ?? null,
       nearest_zone_dist_pct: zones.zones?.[0]?.distancePct ?? null,
+      // Phase 15A: signal quality fields (for 15-day analysis)
+      resistance_cluster_count: signalQuality.resistanceCluster.count,
+      resistance_cluster_label: signalQuality.resistanceCluster.label,
+      volume_character: signalQuality.volumeCharacter.category,
+      volume_multiple: signalQuality.volumeCharacter.volumeMultiple,
+      volume_cpr_today: signalQuality.volumeCharacter.last3CPR?.[2] ?? null,
+      invalidation_price: signalQuality.invalidation.underlyingPrice,
+      invalidation_distance_pct: signalQuality.invalidation.distancePct,
+      block_buy_signal: signalQuality.blockBuySignal,
+      block_reason: signalQuality.blockReason,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
