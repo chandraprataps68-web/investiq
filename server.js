@@ -298,12 +298,10 @@ async function getHistoryShortKey(fyersSym, resolution = 'D', days = 365) {
     }));
     allCandles.unshift(...chunk);
 
-    // Early exit: if this chunk is empty (after retry) and we already have some
-    // candles, we've likely hit the stock's pre-listing range. Don't waste calls
-    // on older periods. This is critical for W/M views of recently-listed stocks.
-    if (chunk.length === 0 && allCandles.length > 0) {
-      break;
-    }
+    // (Phase 13A.1's early-exit on empty-chunk-after-data was removed in 14.1
+    // because it may have caused scanner "insufficient history" symptoms.
+    // The few wasted API calls on recently-listed stocks are an acceptable
+    // tradeoff for guaranteed correctness.)
 
     if (chunkStart <= nowSec - totalSec) break;
     chunkEnd = chunkStart - 86400;
