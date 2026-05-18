@@ -518,6 +518,83 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   .confluence-note { grid-area: note; }
 }
 
+/* Phase 15A — Signal Quality panels */
+.sq-block-banner {
+  background: rgba(255,107,107,0.10);
+  border-left: 3px solid var(--sell);
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin: 16px 0;
+}
+.sq-block-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--sell);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.sq-block-body {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--ink-1);
+  line-height: 1.6;
+}
+.sq-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.5fr;
+  gap: 12px;
+  margin: 16px 0;
+}
+@media (max-width: 900px) {
+  .sq-grid { grid-template-columns: 1fr; }
+}
+.sq-card {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.sq-card.sq-card-invalidation {
+  border-color: rgba(255,107,107,0.3);
+  background: rgba(255,107,107,0.04);
+}
+.sq-card-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.10em;
+  color: var(--ink-3);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.sq-card-value {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+.sq-card-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+.sq-card-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+.sq-card-adj {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
 /* Tracker tab */
 .tracker-grid {
   display: grid;
@@ -1509,7 +1586,8 @@ function renderStock(data) {
       <div class="signal-large signal-pill ${sig.signal.replace(/\s/g,'.')}">${sig.signal}</div>
     </div>
 
-    ${renderConfluence(data.confluence)}
+    ${renderSignalQuality(data.signalQuality, data.signal, data.confluence)}
+    ${renderConfluence(data.confluence, data.signalQuality)}
 
     <div class="grid grid-12">
       <div class="card col-8">
@@ -1585,10 +1663,93 @@ function renderTargets(targets) {
   `;
 }
 
+// ─── Phase 15A: Signal Quality panel ─────
+// Surfaces the THREE post-TATASTEEL safety checks BEFORE the user sees
+// the confluence score. If a block is in effect, this is the most important
+// thing on the page.
+//
+//   1. Resistance Cluster (how stacked is the path above?)
+//   2. Volume Character (accumulation vs distribution at current price)
+//   3. Invalidation Level (the hard-exit price for this thesis)
+function renderSignalQuality(sq, sig, conf) {
+  if (!sq) return '';
+
+  const isBuySignal = sig?.signal === 'STRONG BUY' || sig?.signal === 'BUY';
+
+  // CRITICAL: block banner shown first if signal is BUY but block flag is set
+  let blockBanner = '';
+  if (sq.blockBuySignal && isBuySignal) {
+    blockBanner = `
+      <div class="sq-block-banner">
+        <div class="sq-block-title">⚠ BUY SIGNAL OVERRIDE</div>
+        <div class="sq-block-body">
+          <strong>The scanner says ${sig.signal}, but signal quality checks recommend NOT taking a directional BUY here.</strong><br>
+          Reason: ${sq.blockReason}<br>
+          <span style="color:var(--ink-3);font-size:11px">Consider: credit spread, wait for cleaner setup, or skip entirely. Do not buy CE options.</span>
+        </div>
+      </div>
+    `;
+  }
+
+  // Resistance cluster card
+  const rc = sq.resistanceCluster || {};
+  const rcColor = rc.penalty < -10 ? 'var(--sell)' : rc.penalty < 0 ? 'var(--hold)' : 'var(--buy)';
+  const rcCard = `
+    <div class="sq-card">
+      <div class="sq-card-title">Resistance Cluster</div>
+      <div class="sq-card-value" style="color:${rcColor}">
+        ${rc.count || 0} <span style="color:var(--ink-3);font-size:11px">within 3%</span>
+      </div>
+      <div class="sq-card-label">${rc.label || '—'}</div>
+      ${rc.levelsAbove?.length ? `<div class="sq-card-sub">Levels: ₹${rc.levelsAbove.join(' · ₹')}</div>` : ''}
+      ${rc.penalty !== 0 ? `<div class="sq-card-adj" style="color:${rcColor}">${rc.penalty > 0 ? '+' : ''}${rc.penalty} conf</div>` : ''}
+    </div>
+  `;
+
+  // Volume character card
+  const vc = sq.volumeCharacter || {};
+  const vcColor = vc.adjustment < -5 ? 'var(--sell)' : vc.adjustment < 0 ? 'var(--hold)' : vc.adjustment > 0 ? 'var(--buy)' : 'var(--ink-2)';
+  const vcCard = `
+    <div class="sq-card">
+      <div class="sq-card-title">Volume Character</div>
+      <div class="sq-card-value" style="color:${vcColor}">${vc.category || 'NORMAL'}</div>
+      <div class="sq-card-label">${vc.volumeMultiple != null ? vc.volumeMultiple.toFixed(2) + '× avg' : '—'} ${vc.last3CPR?.[2] != null ? '· CPR ' + vc.last3CPR[2].toFixed(2) : ''}</div>
+      ${vc.note ? `<div class="sq-card-sub">${vc.note}</div>` : ''}
+      ${vc.adjustment !== 0 ? `<div class="sq-card-adj" style="color:${vcColor}">${vc.adjustment > 0 ? '+' : ''}${vc.adjustment} conf</div>` : ''}
+    </div>
+  `;
+
+  // Invalidation card
+  const inv = sq.invalidation || {};
+  const invCard = inv.underlyingPrice ? `
+    <div class="sq-card sq-card-invalidation">
+      <div class="sq-card-title">Invalidation Level</div>
+      <div class="sq-card-value" style="color:var(--sell)">
+        ₹${inv.underlyingPrice}
+      </div>
+      <div class="sq-card-label">${inv.distancePct != null ? inv.distancePct.toFixed(2) + '% away' : ''}</div>
+      <div class="sq-card-sub" style="margin-top:4px;color:var(--ink-2);font-style:italic">
+        ${inv.underlyingBasis}
+      </div>
+      ${inv.exitAction ? `<div class="sq-card-sub" style="color:var(--ink-3);margin-top:4px">Action: ${inv.exitAction}</div>` : ''}
+      ${inv.premiumFloorPct ? `<div class="sq-card-sub" style="color:var(--ink-3)">For options: exit if premium &lt; ${(inv.premiumFloorPct * 100).toFixed(0)}% of entry</div>` : ''}
+    </div>
+  ` : '';
+
+  return `
+    ${blockBanner}
+    <div class="sq-grid">
+      ${rcCard}
+      ${vcCard}
+      ${invCard}
+    </div>
+  `;
+}
+
 // ─── Confluence Score panel ─────
 // Displays the composite 0-100 score with full breakdown for auditability.
 // Never just shows the number — always shows WHY.
-function renderConfluence(conf) {
+function renderConfluence(conf, sq) {
   if (!conf || conf.score == null) return '';
 
   // Tier styling
@@ -1679,6 +1840,11 @@ function renderConfluence(conf) {
         <div class="confluence-score-big">
           <div class="confluence-num" style="color:${t.color}">${conf.score}<span style="color:var(--ink-3);font-size:18px">/100</span></div>
           <div class="confluence-tier" style="color:${t.color}">Tier ${conf.tier} · ${t.label}</div>
+          ${conf.adjustment15A != null && conf.adjustment15A !== 0 ? `
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-3);margin-top:6px">
+              Base ${conf.scoreBefore15A}${conf.adjustment15A > 0 ? ' +' : ' '}${conf.adjustment15A} signal-quality adj
+            </div>
+          ` : ''}
         </div>
       </div>
       <div class="confluence-body">
@@ -3881,10 +4047,16 @@ function trackerExportCSV() {
     'id', 'date', 'time', 'session', 'symbol', 'price', 'changePct',
     'scanner_signal', 'scanner_confidence',
     'confluence_score', 'confluence_tier',
+    'confluence_score_raw', 'confluence_tier_raw', 'confluence_adjustment',
     'confluence_chart', 'confluence_bias', 'confluence_catalyst', 'confluence_technicals', 'confluence_liquidity',
     'rsi', 'macd_bullish', 'volume_ratio', 'trend_score', 'dist_from_52wh_pct',
     'market_bias', 'market_bias_score',
     'nearest_zone_price', 'nearest_zone_type', 'nearest_zone_dist_pct',
+    // Phase 15A signal-quality fields
+    'resistance_cluster_count', 'resistance_cluster_label',
+    'volume_character', 'volume_multiple', 'volume_cpr_today',
+    'invalidation_price', 'invalidation_distance_pct',
+    'block_buy_signal', 'block_reason',
     'capturedAt',
   ];
 
