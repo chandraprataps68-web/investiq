@@ -595,6 +595,40 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   border-top: 1px solid var(--line);
 }
 
+/* Phase 15B — Cross-Engine Gating banner */
+.sq-gating-banner {
+  background: rgba(255,184,0,0.06);
+  border-left: 3px solid var(--hold);
+  border-radius: 6px;
+  padding: 14px 20px;
+  margin: 16px 0;
+}
+.sq-gating-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--hold);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.sq-gating-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+.gating-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 3px;
+  cursor: help;
+  letter-spacing: 0.04em;
+}
+
 /* Tracker tab */
 .tracker-grid {
   display: grid;
@@ -1403,10 +1437,11 @@ function renderScanner(data) {
     <div style="margin-bottom:10px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;letter-spacing:0.05em">
       Scanned <strong style="color:var(--ink-2)">${universeSize}</strong> ${universeLabel} stocks · <strong style="color:var(--ink-2)">${verdictCount}</strong> verdicts produced
       ${universeSize !== verdictCount ? ` · <span style="color:var(--hold)">${universeSize - verdictCount} skipped (insufficient history)</span>` : ''}
+      ${s.blockedByGating != null ? ` · <span style="color:var(--sell)">${s.blockedByGating} blocked by gating</span>` : ''}
     </div>
     <div class="grid grid-12">
-      <div class="cue col-3" style="border-color:var(--buy);"><div class="cue-name">Strong Buy</div><div class="cue-price up">${s.strongBuys || 0}</div></div>
-      <div class="cue col-3" style="border-color:rgba(0,200,150,.4);"><div class="cue-name">Buy</div><div class="cue-price up">${s.buys || 0}</div></div>
+      <div class="cue col-3" style="border-color:var(--buy);"><div class="cue-name">Strong Buy</div><div class="cue-price up">${s.strongBuys || 0}${s.effectiveStrongBuys != null && s.effectiveStrongBuys !== s.strongBuys ? ` <span style="font-size:11px;color:var(--ink-3)">(${s.effectiveStrongBuys} after gating)</span>` : ''}</div></div>
+      <div class="cue col-3" style="border-color:rgba(0,200,150,.4);"><div class="cue-name">Buy</div><div class="cue-price up">${s.buys || 0}${s.effectiveBuys != null && s.effectiveBuys !== s.buys ? ` <span style="font-size:11px;color:var(--ink-3)">(${s.effectiveBuys} after)</span>` : ''}</div></div>
       <div class="cue col-3"><div class="cue-name">Hold</div><div class="cue-price flat">${s.holds || 0}</div></div>
       <div class="cue col-3" style="border-color:rgba(255,77,109,.4);"><div class="cue-name">Sell / Strong Sell</div><div class="cue-price down">${(s.sells || 0) + (s.strongSells || 0)}</div></div>
     </div>
@@ -1420,6 +1455,7 @@ function renderScanner(data) {
         <tr>
           <th onclick="setScanSort('symbol')">Symbol</th>
           <th onclick="setScanSort('signal')">Signal</th>
+          <th>Gating</th>
           <th onclick="setScanSort('confidence')">Confidence</th>
           <th onclick="setScanSort('price')">Price</th>
           <th onclick="setScanSort('return6m')">RS / 6M %</th>
@@ -1433,10 +1469,30 @@ function renderScanner(data) {
         </tr>
       </thead>
       <tbody>
-        ${rows.map(r => `
+        ${rows.map(r => {
+          // Phase 15B: gating badge
+          const gateStock = r.gatingStock?.overall;
+          const gateOption = r.gatingOption?.overall;
+          let gatingBadge = '';
+          if (r.downgradeReason || gateStock === 'FAIL' || gateOption === 'FAIL') {
+            const failures = [...(r.gatingStock?.failures || []), ...(r.gatingOption?.failures || [])];
+            const tooltip = failures.join(' | ').replace(/"/g, "'");
+            // Compact icon legend: stock side · option side
+            const sIcon = gateStock === 'PASS' ? '✓' : gateStock === 'FAIL' ? '✗' : '·';
+            const oIcon = gateOption === 'PASS' ? '✓' : gateOption === 'FAIL' ? '✗' : '·';
+            gatingBadge = `<span class="gating-badge" title="${tooltip}" style="color:${gateOption === 'FAIL' ? 'var(--sell)' : gateStock === 'FAIL' ? 'var(--hold)' : 'var(--buy)'}">S${sIcon} O${oIcon}</span>`;
+          } else if (gateStock === 'PASS') {
+            gatingBadge = `<span class="gating-badge" style="color:var(--buy)">S✓ O${gateOption === 'PASS' ? '✓' : '·'}</span>`;
+          }
+          // Effective signal shown with strikethrough if downgraded
+          const sigDisplay = r.downgradeReason
+            ? `<span class="signal-pill ${r.signal.replace(/\s/g, '.')}" style="text-decoration:line-through;opacity:0.6">${r.signal}</span> → <span class="signal-pill HOLD">HOLD</span>`
+            : `<span class="signal-pill ${r.signal.replace(/\s/g, '.')}">${r.signal}</span>`;
+          return `
           <tr onclick="searchAndOpen('${r.symbol}')">
             <td class="symbol">${r.symbol}</td>
-            <td><span class="signal-pill ${r.signal.replace(/\s/g, '.')}">${r.signal}</span></td>
+            <td>${sigDisplay}</td>
+            <td>${gatingBadge}</td>
             <td><span class="conf-bar"><span style="width:${r.confidence}%;background:${signalColor(r.signal)}"></span></span> ${fmt.num(r.confidence, 0)}</td>
             <td>${fmt.money(r.price)}</td>
             <td class="${fmt.cls(r.return6m)}">${fmt.pct(r.return6m, 1)}</td>
@@ -1448,7 +1504,8 @@ function renderScanner(data) {
             <td>${r.targets?.swing ? fmt.money(r.targets.swing.target) : '—'}</td>
             <td>${r.targets?.swing ? fmt.money(r.targets.swing.stop) : '—'}</td>
           </tr>
-        `).join('')}
+          `;
+        }).join('')}
       </tbody>
     </table>
     <div style="margin-top:8px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;">
@@ -1587,6 +1644,7 @@ function renderStock(data) {
     </div>
 
     ${renderSignalQuality(data.signalQuality, data.signal, data.confluence)}
+    ${renderRangeAndGating(data.rangeBehavior, data.gating, data.signal)}
     ${renderConfluence(data.confluence, data.signalQuality)}
 
     <div class="grid grid-12">
@@ -1660,6 +1718,93 @@ function renderTargets(targets) {
         </div>
       `;
     }).join('')}
+  `;
+}
+
+// ─── Phase 15B: Range Behavior + Cross-Engine Gating panel ─────
+//
+// Combines two things:
+//   1. Range state card — RANGE_BOUND / TRENDING / BREAKING_OUT + ADX
+//   2. Gating verdict — PASS / FAIL for both stock-level and option-level
+//      signal, with failure reasons and suggested alternative.
+//
+// When gating FAILS for a BUY signal, this is louder than the confluence
+// panel — it tells the user "the system says this trade should not be taken,
+// here's why, here's what to do instead".
+function renderRangeAndGating(rb, gating, sig) {
+  if (!rb && !gating) return '';
+
+  // Range state card
+  let rangeCard = '';
+  if (rb) {
+    const stateColors = {
+      TRENDING: 'var(--buy)',
+      RANGE_BOUND: 'var(--hold)',
+      BREAKING_OUT_UP: 'var(--buy)',
+      BREAKING_OUT_DOWN: 'var(--sell)',
+      UNCLEAR: 'var(--ink-3)',
+    };
+    const color = stateColors[rb.state] || 'var(--ink-3)';
+    rangeCard = `
+      <div class="sq-card">
+        <div class="sq-card-title">Range State</div>
+        <div class="sq-card-value" style="color:${color}">${rb.state || '—'}</div>
+        <div class="sq-card-label">
+          ${rb.rangeLow != null && rb.rangeHigh != null ? `₹${rb.rangeLow} – ₹${rb.rangeHigh}` : ''}
+          ${rb.rangeWidthPct != null ? ` (${rb.rangeWidthPct}% wide)` : ''}
+        </div>
+        <div class="sq-card-sub">
+          ${rb.currentPosition ? `Position: ${rb.currentPosition.replace('_', ' ')}` : ''}
+          ${rb.adx != null ? ` · ADX ${rb.adx}` : ''}
+          ${rb.touchesUpper != null ? ` · ↑${rb.touchesUpper} ↓${rb.touchesLower}` : ''}
+        </div>
+        ${rb.recommendedStrategy ? `<div class="sq-card-sub" style="margin-top:6px;color:var(--ink-2);font-style:italic">${rb.recommendedStrategy}</div>` : ''}
+      </div>
+    `;
+  }
+
+  // Gating banner — only show prominent banner if FAIL on relevant signal
+  let gatingBanner = '';
+  if (gating) {
+    const isBuy = sig?.signal === 'STRONG BUY' || sig?.signal === 'BUY';
+    const isSell = sig?.signal === 'STRONG SELL' || sig?.signal === 'SELL';
+    if (isBuy || isSell) {
+      const stockG = gating.stock || {};
+      const optG = gating.option || {};
+      // Show banner if option gate fails OR stock gate fails
+      const showBanner = stockG.overall === 'FAIL' || optG.overall === 'FAIL';
+      if (showBanner) {
+        // Build per-signal-class rows
+        const renderGatingRow = (label, g) => {
+          if (!g) return '';
+          const verdictColor = g.overall === 'PASS' ? 'var(--buy)' : 'var(--sell)';
+          const icon = g.overall === 'PASS' ? '✓' : '✗';
+          return `
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-top:1px solid rgba(255,255,255,0.04)">
+              <div style="color:${verdictColor};font-weight:700;width:60px">${icon} ${g.overall}</div>
+              <div style="flex:1">
+                <div style="color:var(--ink-1);font-weight:600;font-size:11px;margin-bottom:2px">${label}</div>
+                ${g.failureReasons?.length ? `<div style="color:var(--ink-3);font-size:10px;line-height:1.5">${g.failureReasons.map(f => '• ' + f).join('<br>')}</div>` : ''}
+                ${g.suggestedAlternative ? `<div style="color:var(--accent);font-size:10px;margin-top:4px;font-style:italic">→ ${g.suggestedAlternative}</div>` : ''}
+              </div>
+            </div>
+          `;
+        };
+        gatingBanner = `
+          <div class="sq-gating-banner">
+            <div class="sq-gating-title">⚠ Cross-Engine Gating</div>
+            <div class="sq-gating-sub">Scanner says <strong>${sig.signal}</strong>. Quality engines disagree:</div>
+            ${renderGatingRow('Stock trade', stockG)}
+            ${renderGatingRow('Option trade (CE/PE BUY)', optG)}
+          </div>
+        `;
+      }
+    }
+  }
+
+  return `
+    ${gatingBanner}
+    ${rangeCard ? `<div class="sq-grid">${rangeCard}</div>` : ''}
   `;
 }
 
@@ -4057,6 +4202,12 @@ function trackerExportCSV() {
     'volume_character', 'volume_multiple', 'volume_cpr_today',
     'invalidation_price', 'invalidation_distance_pct',
     'block_buy_signal', 'block_reason',
+    // Phase 15B range + gating fields
+    'range_state', 'range_low', 'range_high', 'range_position', 'adx',
+    'range_suppress_directional',
+    'gating_stock_overall', 'gating_stock_downgrade', 'gating_stock_failures',
+    'gating_option_overall', 'gating_option_downgrade', 'gating_option_failures',
+    'gating_option_alternative',
     'capturedAt',
   ];
 
