@@ -3113,12 +3113,17 @@ async function loadOptionScanner(force) {
     const tierA = dq?.tierA || 0;
     const tierB = dq?.tierB || 0;
     const tierC = dq?.tierC || 0;
+    // Phase 15C: show how many stocks were gated out before option fetch
+    const gatedHtml = dq?.gatedOutCount > 0
+      ? ` · <span style="color:var(--sell)" title="Stocks with STRONG BUY/SELL signal that failed Cross-Engine Gating (volume distribution, resistance cluster, range-bound, etc). Excluded from option chain fetch to prevent picks on unsafe setups.">${dq.gatedOutCount} blocked by gating</span>`
+      : '';
     summaryEl.innerHTML = `
       <span style="color:var(--buy)">${data.summary.bullish} CE</span> ·
       <span style="color:var(--sell)">${data.summary.bearish} PE</span> ·
       <span style="color:var(--buy);font-weight:600">${tierA} Tier A</span> ·
       <span style="color:var(--hold)">${tierB} Tier B</span> ·
       <span style="color:var(--ink-3)">${tierC} Tier C</span>
+      ${gatedHtml}
       ${data.fromCache ? ' · <span style="color:var(--ink-3)">cached</span>' : ''}
       ${skipBreakdownHtml}
     `;
@@ -3192,6 +3197,7 @@ async function loadOptionScanner(force) {
             <th title="Composite Buy Score (0-100). Weighs Quality (40%) + Theta Safety (30%) + Liquidity (20%) + Proximity (10%)">BuyScore</th>
             <th title="Tier A: high conviction. Tier B: moderate. Tier C: speculative.">Tier</th>
             <th>IV</th><th>Conf</th>
+            <th title="Cross-Engine Gating: did this pick pass all five quality engines? (Confluence, Range, Volume Character, Resistance Cluster, Signal Quality)">Gates</th>
           </tr>
         </thead>
         <tbody>
@@ -3243,6 +3249,9 @@ async function loadOptionScanner(force) {
                 <td style="font-family:'JetBrains Mono',monospace;color:${tierColor};font-weight:600;text-align:center">${r.tier || '—'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2);font-size:11px">${r.iv != null ? r.iv + '%' : '—'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-3);font-size:11px">${r.stockConfidence}</td>
+                <td style="font-family:'JetBrains Mono',monospace;font-size:11px;text-align:center" title="${r.gatingOption?.overall === 'PASS' ? 'Passed all five quality engines' : 'Gating data unavailable'} · Range: ${r.rangeState || '—'} · Volume: ${r.volumeCharacter || '—'} · Resistance cluster: ${r.resistanceClusterCount ?? '—'}">
+                  ${r.gatingOption?.overall === 'PASS' ? '<span style="color:var(--buy);font-weight:700">5/5 ✓</span>' : '<span style="color:var(--ink-3)">—</span>'}
+                </td>
               </tr>
             `;
           }).join('')}
@@ -3261,6 +3270,28 @@ async function loadOptionScanner(force) {
         · <strong>Expiry</strong> shown as month/date. Near-month = easier to trade, more theta. Next month = better math, may need to search the exact contract in your broker.<br>
         · Hover any row for upstream stock confidence breakdown.
       </div>
+      ${(dq?.gatedOutStocks && dq.gatedOutStocks.length > 0) ? `
+        <div style="margin-top:16px;padding:14px 18px;background:rgba(255,184,0,.05);border-left:3px solid var(--hold);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.1em;color:var(--hold);font-weight:700;margin-bottom:8px">⚠ ${dq.gatedOutStocks.length} STOCKS BLOCKED BY CROSS-ENGINE GATING</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);margin-bottom:10px;line-height:1.6">
+            These stocks had STRONG BUY/SELL signals but failed quality gates (volume distribution, resistance cluster, range-bound, etc).
+            Showing them here for transparency — they were excluded from option chain fetching to prevent picks on unsafe setups.
+          </div>
+          <div style="display:grid;grid-template-columns:120px 100px 1fr;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-2);padding-bottom:6px;border-bottom:1px solid var(--line);margin-bottom:6px">
+            <div>SYMBOL</div><div>SIGNAL</div><div>WHY BLOCKED</div>
+          </div>
+          ${dq.gatedOutStocks.slice(0, 20).map(g => `
+            <div style="display:grid;grid-template-columns:120px 100px 1fr;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.03)">
+              <div style="color:var(--ink-1);font-weight:600">${g.symbol}</div>
+              <div style="color:${g.signal === 'STRONG BUY' ? 'var(--buy)' : 'var(--sell)'}">${g.signal}</div>
+              <div style="color:var(--ink-3);font-size:10px;line-height:1.5">
+                ${(g.failures || []).map(f => '• ' + f).join('<br>')}
+                ${g.suggestedAlternative ? `<br><span style="color:var(--accent);font-style:italic">→ ${g.suggestedAlternative}</span>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
     `;
   } catch (e) {
     tableEl.innerHTML = '<div class="empty">Failed: ' + e.message + '</div>';
