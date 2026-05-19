@@ -314,6 +314,18 @@ function buildPickForExpiry({ stockSignal, fyers, expiryChoice, isBullish, optio
     stockPrice: stockSignal.price,
     stockTarget,
     stockStop,
+    // Phase 15C: carry gating + range + volume context to UI so user sees
+    // WHY this pick passed all five quality gates. Builds trust + shows the
+    // safety net that's working behind the scenes.
+    gatingOption: stockSignal.gatingOption ? {
+      overall: stockSignal.gatingOption.overall,
+      // Don't include failures if PASS (only fail-side info)
+      failures: stockSignal.gatingOption.overall === 'FAIL' ? stockSignal.gatingOption.failures : null,
+    } : null,
+    rangeState: stockSignal.rangeState || null,
+    adx: stockSignal.adx || null,
+    volumeCharacter: stockSignal.volumeCharacter || null,
+    resistanceClusterCount: stockSignal.resistanceClusterCount || null,
   };
 }
 
@@ -391,11 +403,48 @@ async function recommendForStock(stockSignal, fyers) {
 // Main scan: takes equity scanner results, produces option recommendations.
 // Returns { recommendations, dataQuality } where dataQuality tells the UI
 // HOW MANY stocks were considered, returned, and WHY others were skipped.
+//
+// Phase 15C: gating filter applied at the input. Stocks whose option-grade
+// gating verdict is FAIL are excluded BEFORE the expensive option chain fetch.
+// This ensures the Options tab respects the same safety rules as Stock Search
+// and Scanner. Stocks blocked here are surfaced in dataQuality.gatedOut so the
+// user can see WHY a stock they expected to see isn't there.
 async function scanOptions(scannerResults, fyers) {
-  const filtered = (scannerResults || []).filter(r =>
+  // Step 1: signal-strength + confidence filter (existing logic)
+  const strongOnly = (scannerResults || []).filter(r =>
     (r.signal === 'STRONG BUY' || r.signal === 'STRONG SELL') &&
     r.confidence >= 70
   );
+
+  // Step 2: Phase 15C — option-grade gating filter
+  // Stocks must pass `gatingOption.overall === 'PASS'` to fetch chains for.
+  // If gatingOption is missing (scanner ran without enrichment, edge case),
+  // we let it through (fallback to old behaviour rather than block everything).
+  const gatedOut = [];
+  const gatedIn = [];
+  for (const s of strongOnly) {
+    const g = s.gatingOption;
+    if (!g) {
+      // No gating data — fall through (backward compat)
+      gatedIn.push(s);
+      continue;
+    }
+    if (g.overall === 'PASS') {
+      gatedIn.push(s);
+    } else {
+      gatedOut.push({
+        symbol: s.symbol,
+        signal: s.signal,
+        confidence: s.confidence,
+        rangeState: s.rangeState,
+        volumeCharacter: s.volumeCharacter,
+        failures: g.failures,
+        suggestedAlternative: g.alternative,
+      });
+    }
+  }
+
+  const filtered = gatedIn;
   filtered.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
   const top = filtered.slice(0, 30);
 
@@ -455,6 +504,10 @@ async function scanOptions(scannerResults, fyers) {
       tierA, tierB, tierC,
       skipCounts,
       skipDetails,
+      // Phase 15C: stocks that passed signal+confidence but failed option-gate
+      // (these would have been option picks before 15C; UI can show as "blocked")
+      gatedOutCount: gatedOut.length,
+      gatedOutStocks: gatedOut,
     },
   };
 }
