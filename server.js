@@ -11,6 +11,8 @@ const TA = require('./ta');
 const Zones = require('./zones');
 const Confluence = require('./confluence');
 const SignalQuality = require('./signalQuality');
+const RangeBehavior = require('./rangeBehavior');
+const Gating = require('./gating');
 const { runScanner } = require('./scanner');
 const { getPreMarketSnapshot } = require('./premarket');
 const { fetchCrypto, fetchCryptoHistory, fetchCommodities } = require('./commodities');
@@ -554,10 +556,29 @@ app.get('/api/analyze/:symbol', requireAuth, async (req, res) => {
       confluence.score >= 55 ? 'B' :
       confluence.score >= 40 ? 'C' : 'D';
 
+    // ─── Phase 15B: range behavior + cross-engine gating ──
+    // Range behavior detects "stock is in a defined trading range" — directional
+    // bets fail here, route to spreads instead.
+    const rangeBehavior = RangeBehavior.classifyRangeBehavior({ candles, currentPrice });
+    // Gating runs the meta-rule check: every relevant engine must agree.
+    // We compute BOTH the stock-signal gating AND the option-signal gating
+    // because the same underlying may pass for one and fail for the other.
+    const gatingStock = Gating.checkCrossEngine({
+      signal: sig.signal, confluence, signalQuality, rangeBehavior,
+      zones, currentPrice, isOptionTrade: false,
+    });
+    const gatingOption = Gating.checkCrossEngine({
+      signal: sig.signal, confluence, signalQuality, rangeBehavior,
+      zones, currentPrice, isOptionTrade: true,
+    });
+    const gating = { stock: gatingStock, option: gatingOption };
+
     res.json({
       ok: true, symbol: sym, quote,
       analysis: a, signal: sig, zones, confluence,
-      signalQuality, // new in Phase 15A
+      signalQuality,      // Phase 15A
+      rangeBehavior,      // Phase 15B
+      gating,             // Phase 15B
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -609,6 +630,18 @@ app.get('/api/tracker/snapshot/:symbol', requireAuth, async (req, res) => {
       confluenceScoreAdjusted >= 70 ? 'A' :
       confluenceScoreAdjusted >= 55 ? 'B' :
       confluenceScoreAdjusted >= 40 ? 'C' : 'D';
+    // Phase 15B — range behavior + gating verdicts (for 15-day analysis)
+    const rangeBehavior = RangeBehavior.classifyRangeBehavior({ candles, currentPrice });
+    confluence.score = confluenceScoreAdjusted;
+    confluence.tier = tierAdjusted;
+    const gatingStock = Gating.checkCrossEngine({
+      signal: sig.signal, confluence, signalQuality, rangeBehavior,
+      zones, currentPrice, isOptionTrade: false,
+    });
+    const gatingOption = Gating.checkCrossEngine({
+      signal: sig.signal, confluence, signalQuality, rangeBehavior,
+      zones, currentPrice, isOptionTrade: true,
+    });
 
     // Flatten to a single record (no nesting deeper than 1)
     res.json({
@@ -655,6 +688,20 @@ app.get('/api/tracker/snapshot/:symbol', requireAuth, async (req, res) => {
       invalidation_distance_pct: signalQuality.invalidation.distancePct,
       block_buy_signal: signalQuality.blockBuySignal,
       block_reason: signalQuality.blockReason,
+      // Phase 15B: range behavior + cross-engine gating
+      range_state: rangeBehavior.state,
+      range_low: rangeBehavior.rangeLow,
+      range_high: rangeBehavior.rangeHigh,
+      range_position: rangeBehavior.currentPosition,
+      adx: rangeBehavior.adx,
+      range_suppress_directional: rangeBehavior.suppressDirectional,
+      gating_stock_overall: gatingStock.overall,
+      gating_stock_downgrade: gatingStock.signalDowngrade,
+      gating_stock_failures: (gatingStock.failureReasons || []).join(' | '),
+      gating_option_overall: gatingOption.overall,
+      gating_option_downgrade: gatingOption.signalDowngrade,
+      gating_option_failures: (gatingOption.failureReasons || []).join(' | '),
+      gating_option_alternative: gatingOption.suggestedAlternative,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

@@ -1,8 +1,12 @@
 // scanner.js — Equity Trend Scanner for InvestIQ Pro v6
 // Pipeline: Universe -> getHistory (cached) -> trendTemplate filter
-// -> RS rank vs Nifty -> sort -> generateSignal -> return ranked list
+// -> RS rank vs Nifty -> sort -> generateSignal -> [Phase 15B: gating] -> return ranked list
 
 const TA = require('./ta');
+const Zones = require('./zones');
+const SignalQuality = require('./signalQuality');
+const RangeBehavior = require('./rangeBehavior');
+const Gating = require('./gating');
 const { NIFTY_100, toFyersEquity } = require('./universe');
 
 // Compute relative strength: stock 6M return vs Nifty 6M return
@@ -63,15 +67,60 @@ async function runScanner(fetchHistoryFn, opts = {}) {
     .filter((r) => r.return6m != null);
   const rsRanks = computeRSRank(returns);
 
-  // Run TA on each, build result rows
+  // Run TA on each, build result rows. Phase 15B: also compute zones, signal
+  // quality, range behavior, and gating verdicts per stock. The signal-quality
+  // adjustment and gating downgrade are surfaced as extra fields — the original
+  // `signal` and `confidence` stay untouched for backward compatibility, the
+  // frontend uses `effectiveSignal` to decide what to display.
   const results = data.map((d) => {
     const a = TA.fullAnalysis(d.candles);
     const sig = TA.generateSignal(a);
+    const currentPrice = a.ok ? a.price : (d.candles[d.candles.length - 1]?.c ?? null);
+
+    // Phase 15B enrichment — only attempt for stocks that produced a valid
+    // analysis. Skipped otherwise so we don't compute zones on insufficient data.
+    let zones = null, sq = null, rb = null, gatingStock = null, gatingOption = null;
+    let effectiveSignal = sig.signal;
+    let downgrade = null;
+    if (a.ok && currentPrice && d.candles.length >= 45) {
+      try {
+        zones = Zones.buildZones(d.candles, currentPrice);
+        sq = SignalQuality.enrichSignalQuality({
+          candles: d.candles, currentPrice, zones, signal: sig.signal, atr14: a.atr14,
+        });
+        rb = RangeBehavior.classifyRangeBehavior({ candles: d.candles, currentPrice });
+        // Use a synthetic confluence shim for gating — scanner doesn't compute
+        // full confluence (that's per-stock detail view). We approximate using
+        // the trend score + signal confidence to get a 0-100 figure.
+        const approxConfluence = {
+          score: Math.min(100, Math.round((a.trend.score / 8) * 60 + sig.confidence * 0.4 + (sq.confluenceAdjustment || 0))),
+        };
+        gatingStock = Gating.checkCrossEngine({
+          signal: sig.signal, confluence: approxConfluence, signalQuality: sq, rangeBehavior: rb,
+          zones, currentPrice, isOptionTrade: false,
+        });
+        gatingOption = Gating.checkCrossEngine({
+          signal: sig.signal, confluence: approxConfluence, signalQuality: sq, rangeBehavior: rb,
+          zones, currentPrice, isOptionTrade: true,
+        });
+        // Effective signal reflects gating downgrade
+        if (gatingStock.signalDowngrade === 'HOLD') {
+          effectiveSignal = 'HOLD';
+          downgrade = 'STOCK_BUY_BLOCKED';
+        } else if (gatingStock.signalDowngrade === 'BLOCKED') {
+          effectiveSignal = 'HOLD';
+          downgrade = 'STOCK_HARD_BLOCK';
+        }
+      } catch (_) { /* enrichment failure → fall back to raw signal */ }
+    }
+
     return {
       symbol: d.symbol,
       fyersSymbol: d.fyersSym,
       price: a.ok ? a.price : null,
-      signal: sig.signal,
+      signal: sig.signal,                     // raw scanner signal (unchanged)
+      effectiveSignal,                        // after gating
+      downgradeReason: downgrade,
       confidence: sig.confidence,
       bullScore: sig.bullScore,
       bearScore: sig.bearScore,
@@ -86,6 +135,22 @@ async function runScanner(fetchHistoryFn, opts = {}) {
       targets: sig.targets,
       rationale: sig.rationale,
       atr: a.ok ? a.atr14 : null,
+      // Phase 15B exposed fields (UI consumes these to render badges)
+      volumeCharacter: sq?.volumeCharacter?.category ?? null,
+      resistanceClusterCount: sq?.resistanceCluster?.count ?? null,
+      rangeState: rb?.state ?? null,
+      adx: rb?.adx ?? null,
+      gatingStock: gatingStock ? {
+        overall: gatingStock.overall,
+        signalDowngrade: gatingStock.signalDowngrade,
+        failures: gatingStock.failureReasons,
+      } : null,
+      gatingOption: gatingOption ? {
+        overall: gatingOption.overall,
+        signalDowngrade: gatingOption.signalDowngrade,
+        failures: gatingOption.failureReasons,
+        alternative: gatingOption.suggestedAlternative,
+      } : null,
     };
   });
 
@@ -110,6 +175,11 @@ async function runScanner(fetchHistoryFn, opts = {}) {
       holds: results.filter((r) => r.signal === 'HOLD').length,
       sells: results.filter((r) => r.signal === 'SELL').length,
       strongSells: results.filter((r) => r.signal === 'STRONG SELL').length,
+      // Phase 15B summary — how many raw BUY signals survive cross-engine gating
+      effectiveStrongBuys: results.filter((r) => r.effectiveSignal === 'STRONG BUY').length,
+      effectiveBuys: results.filter((r) => r.effectiveSignal === 'BUY').length,
+      blockedByGating: results.filter((r) => r.downgradeReason).length,
+      gatingOptionPass: results.filter((r) => r.gatingOption?.overall === 'PASS').length,
     },
   };
 }
