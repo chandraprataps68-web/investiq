@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#0d1117" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="InvestIQ" />
+<link rel="manifest" href="/manifest.json" />
 <title>InvestIQ Pro — Markets Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -419,6 +424,459 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
 
 #chart { height: 420px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; }
 
+/* Confluence Score panel — shown above the chart/targets row */
+.confluence-panel {
+  margin: 16px 0;
+  padding: 20px 24px;
+  border-radius: 6px;
+}
+.confluence-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.confluence-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 22px;
+  color: var(--ink-1);
+  font-weight: 600;
+}
+.confluence-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+.confluence-score-big {
+  text-align: right;
+}
+.confluence-num {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1;
+}
+.confluence-tier {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.confluence-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.confluence-row {
+  display: grid;
+  grid-template-columns: 160px 1fr 80px 50px 1fr;
+  align-items: center;
+  gap: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  padding: 4px 0;
+}
+.confluence-label {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.confluence-bar-wrap {
+  background: rgba(255,255,255,0.04);
+  border-radius: 2px;
+  height: 6px;
+  position: relative;
+  overflow: hidden;
+}
+.confluence-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+.confluence-score {
+  color: var(--ink-1);
+  font-weight: 600;
+  text-align: right;
+}
+.confluence-weight {
+  color: var(--ink-3);
+  font-size: 11px;
+  text-align: right;
+}
+.confluence-note {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-style: italic;
+}
+@media (max-width: 900px) {
+  .confluence-row {
+    grid-template-columns: 130px 1fr 60px;
+    grid-template-areas: "label bar score" "note note note";
+  }
+  .confluence-label { grid-area: label; }
+  .confluence-bar-wrap { grid-area: bar; }
+  .confluence-score { grid-area: score; }
+  .confluence-weight { display: none; }
+  .confluence-note { grid-area: note; }
+}
+
+/* Phase 15A — Signal Quality panels */
+.sq-block-banner {
+  background: rgba(255,107,107,0.10);
+  border-left: 3px solid var(--sell);
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin: 16px 0;
+}
+.sq-block-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--sell);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.sq-block-body {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--ink-1);
+  line-height: 1.6;
+}
+.sq-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.5fr;
+  gap: 12px;
+  margin: 16px 0;
+}
+@media (max-width: 900px) {
+  .sq-grid { grid-template-columns: 1fr; }
+}
+.sq-card {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.sq-card.sq-card-invalidation {
+  border-color: rgba(255,107,107,0.3);
+  background: rgba(255,107,107,0.04);
+}
+.sq-card-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.10em;
+  color: var(--ink-3);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.sq-card-value {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+.sq-card-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+.sq-card-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+.sq-card-adj {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+/* Phase 15B — Cross-Engine Gating banner */
+.sq-gating-banner {
+  background: rgba(255,184,0,0.06);
+  border-left: 3px solid var(--hold);
+  border-radius: 6px;
+  padding: 14px 20px;
+  margin: 16px 0;
+}
+.sq-gating-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--hold);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.sq-gating-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+.gating-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 3px;
+  cursor: help;
+  letter-spacing: 0.04em;
+}
+
+/* Option Study tab */
+.ostudy-selector {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.ostudy-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ostudy-field label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+.ostudy-field input,
+.ostudy-field select {
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  color: var(--ink-1);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  min-width: 130px;
+}
+.ostudy-field select:disabled { opacity: 0.4; }
+.ostudy-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .ostudy-grid { grid-template-columns: 1fr; }
+}
+.ostudy-metric-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.ostudy-metric-row .label { color: var(--ink-3); }
+.ostudy-metric-row .value { color: var(--ink-1); font-weight: 600; }
+.ostudy-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ostudy-hero-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 26px;
+  color: var(--ink-1);
+  font-weight: 600;
+}
+.ostudy-hero-premium {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.ostudy-decay-bar {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+.ostudy-decay-cell {
+  flex: 1;
+  text-align: center;
+  padding: 8px 4px;
+  background: var(--bg-3);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.ostudy-decay-cell .d-label {
+  font-size: 9px;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+}
+.ostudy-decay-cell .d-value {
+  font-size: 13px;
+  color: var(--ink-1);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.ostudy-moneyness {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.ostudy-moneyness.ITM { background: rgba(78,206,121,0.18); color: var(--buy); }
+.ostudy-moneyness.OTM { background: rgba(255,107,107,0.15); color: var(--sell); }
+.ostudy-moneyness.ATM { background: rgba(255,184,0,0.15); color: var(--hold); }
+
+/* Tracker tab */
+.tracker-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .tracker-grid { grid-template-columns: 1fr; }
+}
+.btn-small {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-3);
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.btn-small:hover { color: var(--ink-1); border-color: var(--accent); }
+.btn-small.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tracker-watchlist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-3);
+  border-radius: 3px;
+  margin-bottom: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.tracker-watchlist-row .sym { color: var(--ink-1); font-weight: 600; }
+.tracker-watchlist-row button {
+  background: none; border: none; color: var(--ink-3); cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 0 4px;
+}
+.tracker-watchlist-row button:hover { color: var(--sell); }
+.tracker-snap-table {
+  width: 100%;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  border-collapse: collapse;
+}
+.tracker-snap-table th {
+  background: var(--bg-3);
+  color: var(--ink-3);
+  font-weight: 500;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tracker-snap-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  white-space: nowrap;
+}
+.tracker-snap-table tr:hover td { background: rgba(255,255,255,0.02); }
+.tracker-snap-table .col-sym { color: var(--ink-1); font-weight: 600; }
+.tracker-snap-table .col-sig { font-weight: 600; }
+.tracker-snap-table .col-sig.STRONG\.BUY,
+.tracker-snap-table .col-sig.BUY { color: var(--buy); }
+.tracker-snap-table .col-sig.STRONG\.SELL,
+.tracker-snap-table .col-sig.SELL { color: var(--sell); }
+.tracker-snap-table .col-sig.HOLD { color: var(--hold); }
+.tracker-tier {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 14px;
+  text-align: center;
+}
+.tracker-tier.S, .tracker-tier.A { background: rgba(78,206,121,0.18); color: var(--buy); }
+.tracker-tier.B { background: rgba(255,184,0,0.18); color: var(--hold); }
+.tracker-tier.C { background: rgba(160,168,181,0.12); color: var(--ink-2); }
+.tracker-tier.D { background: rgba(255,107,107,0.15); color: var(--sell); }
+.tracker-session-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.tracker-session-pill.open { background: rgba(78,162,255,0.15); color: var(--accent); }
+.tracker-session-pill.close { background: rgba(255,184,0,0.15); color: var(--hold); }
+
+/* Timeframe toggle: D / W / M */
+.tf-toggle { display: inline-flex; gap: 2px; background: var(--bg-3); border-radius: 4px; padding: 2px; }
+.tf-btn {
+  padding: 4px 12px; background: transparent; border: none;
+  color: var(--ink-3); cursor: pointer;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.05em; border-radius: 3px; transition: all 0.15s;
+}
+.tf-btn:hover { color: var(--ink-1); }
+.tf-btn.active { background: var(--accent); color: #fff; }
+
+/* Zones legend below chart */
+.zones-legend {
+  margin-top: 12px; padding: 12px;
+  background: var(--bg-3); border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--ink-3); line-height: 1.6;
+  max-height: 280px; overflow-y: auto;
+}
+.zones-legend-title {
+  font-size: 10px; letter-spacing: 0.12em;
+  color: var(--ink-2); margin-bottom: 8px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.zone-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 3px 0;
+}
+.zone-pill {
+  display: inline-block; padding: 1px 6px; border-radius: 2px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+  min-width: 14px; text-align: center;
+}
+.zone-pill.tf-Q { background: rgba(78,162,255,0.2); color: var(--accent); }
+.zone-pill.tf-M { background: rgba(255,184,0,0.18); color: var(--hold); }
+.zone-pill.tf-W { background: rgba(160,168,181,0.18); color: var(--ink-2); }
+.zone-pill.tf-psych { background: rgba(255,255,255,0.06); color: var(--ink-3); }
+.zone-strength { color: var(--ink-2); }
+.zone-price { font-weight: 600; color: var(--ink-1); min-width: 70px; }
+.zone-dist { color: var(--ink-3); min-width: 60px; text-align: right; }
+
 .target-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--line); }
 .target-row:last-child { border-bottom: none; }
 .target-row .label { color: var(--ink-3); font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.05em; }
@@ -457,6 +915,216 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 8px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — phones ≤ 600px wide
+   Applied OVER existing @media rules to fix the actual usability gaps
+   identified for in-day phone use of Stock Search / Option Study /
+   Scanner / Tracker tabs.
+   Principles:
+     - Touch targets ≥ 44px (Apple HIG)
+     - Body text ≥ 12px; warnings ≥ 13px
+     - Single column for everything
+     - Search input + tab nav both sticky for thumb reach
+   ═══════════════════════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+  /* Respect notch on iPhone */
+  body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  header {
+    padding: 10px 14px;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+  .brand { font-size: 18px; }
+  .brand .pro { display: none; } /* Save space */
+  .market-pulse { font-size: 11px; gap: 10px; margin-left: auto; }
+  .auth-btn { padding: 8px 12px; font-size: 11px; }
+
+  /* Tabs — bigger, thumb-friendly. Sticky to top so always reachable */
+  nav.tabs {
+    padding: 0 8px;
+    overflow-x: auto;
+    white-space: nowrap;
+    position: sticky; top: 0; z-index: 90;
+    -webkit-overflow-scrolling: touch;
+    background: var(--bg-2);
+  }
+  .tab {
+    padding: 14px 14px;
+    font-size: 11px;
+    min-height: 48px;
+    letter-spacing: 0.06em;
+  }
+  .tab-num { display: none; } /* Save horizontal space */
+
+  /* Main content gets thinner padding */
+  main { padding: 12px 12px 80px 12px; } /* extra bottom padding for safe scroll */
+
+  /* Panel headers — drop subtitle to next line, smaller title */
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 6px;
+  }
+  .panel-title { font-size: 20px !important; }
+  .panel-sub { font-size: 11px; line-height: 1.5; }
+  .panel-actions { width: 100%; flex-wrap: wrap; gap: 8px; }
+  .panel-actions .btn {
+    min-height: 44px; padding: 10px 16px;
+    font-size: 12px;
+  }
+
+  /* Stock Search — the priority tab */
+  .search-wrap { position: sticky; top: 56px; z-index: 80; background: var(--bg); padding: 8px 0; margin: -8px 0 8px; }
+  .search-input {
+    font-size: 16px !important; /* Stop iOS from zooming on focus */
+    padding: 14px 16px !important;
+    min-height: 50px;
+  }
+  .search-results { max-height: 50vh; overflow-y: auto; }
+  .search-row { padding: 14px 16px; min-height: 48px; font-size: 14px; }
+
+  /* Stock hero — vertical, price prominent */
+  .stock-hero {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    padding: 16px !important;
+  }
+  .stock-symbol { font-size: 22px !important; }
+  .stock-price { font-size: 32px !important; line-height: 1 !important; }
+  .stock-change { font-size: 14px !important; }
+  .signal-large { font-size: 13px !important; padding: 8px 14px !important; align-self: flex-start; }
+
+  /* Signal Quality cards — stack with bigger fonts */
+  .sq-grid { grid-template-columns: 1fr !important; gap: 10px; }
+  .sq-card { padding: 14px; }
+  .sq-card-title { font-size: 11px; margin-bottom: 8px; }
+  .sq-card-value { font-size: 22px; }
+  .sq-card-label { font-size: 12px; }
+  .sq-card-sub { font-size: 12px; line-height: 1.55; }
+  .sq-card-adj { font-size: 12px; }
+
+  /* The BUY OVERRIDE banner — keep prominent on mobile */
+  .sq-block-banner { padding: 14px 16px; margin: 12px 0; }
+  .sq-block-title { font-size: 12px; }
+  .sq-block-body { font-size: 13px; line-height: 1.6; }
+
+  /* Cross-engine gating banner */
+  .sq-gating-banner { padding: 12px 14px; margin: 12px 0; }
+  .sq-gating-title { font-size: 12px; }
+  .sq-gating-sub { font-size: 12px; }
+
+  /* Confluence panel — wrap header, bigger score */
+  .confluence-header { flex-direction: column !important; gap: 8px !important; align-items: flex-start !important; }
+  .confluence-num { font-size: 42px !important; }
+  .confluence-tier { font-size: 13px !important; }
+  .confluence-title { font-size: 12px !important; }
+  .confluence-sub { font-size: 11px !important; }
+  .confluence-row { padding: 10px 0 !important; }
+  .confluence-bar { height: 6px !important; }
+  .confluence-component-name { font-size: 11px !important; }
+  .confluence-component-score { font-size: 13px !important; min-width: 36px !important; }
+  .confluence-component-reason { font-size: 11px !important; line-height: 1.5 !important; }
+
+  /* Generic grid → all columns full-width on phone */
+  .grid.grid-12 { gap: 12px !important; }
+  .col-2, .col-3, .col-4, .col-6, .col-8, .col-10, .col-12 { grid-column: span 12 !important; }
+  .card { padding: 14px !important; }
+
+  /* Metric grid (Technical Snapshot) — single column on phone */
+  .metric-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+  .metric { padding: 10px !important; }
+  .metric-name { font-size: 10px !important; }
+  .metric-val { font-size: 16px !important; }
+
+  /* Target rows — bigger tap surface */
+  .target-row { padding: 10px 0 !important; min-height: 36px; }
+  .target-row .label { font-size: 11px; }
+  .target-row .val { font-size: 14px; }
+
+  /* Timeframe D/W/M toggle — touchable */
+  .tf-toggle { gap: 4px; }
+  .tf-btn {
+    min-width: 44px; min-height: 44px;
+    padding: 10px 12px !important;
+    font-size: 12px !important;
+  }
+
+  /* Chart height — sensible on mobile */
+  #chart { height: 320px !important; }
+
+  /* Buttons everywhere — touchable */
+  .btn, .btn-primary {
+    min-height: 44px; padding: 10px 18px;
+    font-size: 12px;
+  }
+
+  /* Bias reasons */
+  .bias-reasons { gap: 8px; }
+  .bias-reason { font-size: 12px; padding: 8px 12px; line-height: 1.5; }
+
+  /* Scanner table — make it a horizontally scrollable strip with sticky symbol col */
+  .scanner-table { font-size: 11px; }
+  .scanner-table thead { display: none; } /* Hide header, use card-like rows */
+  .scanner-table tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .scanner-table tbody td {
+    padding: 2px 0 !important;
+    border: none !important;
+    font-size: 12px;
+  }
+  /* First two cells (symbol + signal) take the top row spanning */
+  .scanner-table tbody td:nth-child(1) { grid-column: 1; font-weight: 600; font-size: 14px; }
+  .scanner-table tbody td:nth-child(2) { grid-column: 2; text-align: right; }
+  /* Rest flow in the grid */
+
+  /* Tracker tab */
+  .tracker-grid { grid-template-columns: 1fr !important; }
+  .tracker-snapshot-row { font-size: 12px; }
+
+  /* Catch-all: ANY input on mobile must be ≥16px to prevent iOS focus-zoom.
+     This deliberately overrides inline styles that set smaller sizes on
+     tracker / strategy / option-study inputs. */
+  input[type="text"], input[type="number"], input[type="search"],
+  input[type="email"], input[type="tel"], textarea, select {
+    font-size: 16px !important;
+    min-height: 44px;
+  }
+
+  /* Option Study */
+  .ostudy-grid { grid-template-columns: 1fr !important; gap: 12px; }
+  .ostudy-selector { gap: 10px; }
+  .ostudy-field { width: 100%; }
+  .ostudy-field input, .ostudy-field select {
+    width: 100%; min-height: 44px;
+    font-size: 14px;
+  }
+  .ostudy-hero { flex-direction: column; align-items: flex-start; }
+  .ostudy-hero-title { font-size: 20px !important; }
+  .ostudy-hero-premium { font-size: 26px !important; }
+  .ostudy-metric-row { padding: 9px 0 !important; font-size: 13px !important; }
+  .ostudy-metric-row .label { font-size: 12px; }
+  .ostudy-decay-bar { flex-wrap: wrap; gap: 4px; }
+  .ostudy-decay-cell { padding: 8px 4px; min-width: 60px; flex: 1 1 60px; }
+  .ostudy-decay-cell .d-label { font-size: 9px; }
+  .ostudy-decay-cell .d-value { font-size: 12px; }
+}
+
+/* Slightly larger phones (601-768px) — gentler version of the above */
+@media (min-width: 601px) and (max-width: 768px) {
+  main { padding: 16px; }
+  .sq-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .metric-grid { grid-template-columns: 1fr 1fr 1fr; }
+  .tab-num { display: none; }
+  #chart { height: 360px !important; }
+}
 </style>
 </head>
 <body>
@@ -501,6 +1169,8 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   <button class="tab" data-tab="optscanner"><span class="tab-num">06</span>Options</button>
   <button class="tab" data-tab="backtest"><span class="tab-num">07</span>Backtest</button>
   <button class="tab" data-tab="intraday"><span class="tab-num">08</span>Intraday</button>
+  <button class="tab" data-tab="tracker"><span class="tab-num">09</span>Tracker</button>
+  <button class="tab" data-tab="optstudy"><span class="tab-num">10</span>Option Study</button>
 </nav>
 
 <main>
@@ -775,6 +1445,103 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   <div id="intra-content"><div class="empty">Loading intraday playbook...</div></div>
 </section>
 
+<!-- ════════════════ TAB 09 — TRACKER ════════════════ -->
+<section class="panel" id="panel-tracker">
+  <div class="panel-header">
+    <h2 class="panel-title">Tracker</h2>
+    <span class="panel-sub">Collect signals + price daily. Compare scanner vs confluence over 15 days. Saved in browser, exportable as CSV.</span>
+  </div>
+
+  <div class="tracker-grid">
+    <!-- Watchlist + actions panel -->
+    <div class="card">
+      <div class="card-title">Watchlist <span id="tracker-watchlist-count" style="color:var(--ink-3);font-weight:400;font-size:11px;margin-left:8px"></span></div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input id="tracker-add-input" type="text" placeholder="Type symbol (e.g. VEDL)" style="flex:1;background:var(--bg-3);border:1px solid var(--line);border-radius:4px;padding:8px 10px;color:var(--ink-1);font-family:'JetBrains Mono',monospace;font-size:12px" onkeydown="if(event.key==='Enter')trackerAddSymbol()">
+        <button class="btn" onclick="trackerAddSymbol()">Add</button>
+      </div>
+      <div id="tracker-watchlist"></div>
+
+      <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px">
+        <div class="card-title" style="margin-bottom:8px">Actions</div>
+        <button class="btn btn-primary" id="tracker-snap-open-btn" onclick="trackerTakeSnapshot('open')" style="width:100%;margin-bottom:6px">📸 Take OPEN Snapshot</button>
+        <button class="btn btn-primary" id="tracker-snap-close-btn" onclick="trackerTakeSnapshot('close')" style="width:100%;margin-bottom:6px">📸 Take CLOSE Snapshot</button>
+        <button class="btn" onclick="trackerExportCSV()" style="width:100%;margin-bottom:6px">⬇ Download CSV</button>
+        <button class="btn" onclick="trackerClearAll()" style="width:100%;color:var(--sell)">🗑 Clear All Data</button>
+        <div id="tracker-action-status" style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-top:8px;min-height:14px"></div>
+      </div>
+
+      <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px">
+        <div class="card-title" style="margin-bottom:8px">Stats</div>
+        <div id="tracker-stats" style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;line-height:1.7"></div>
+      </div>
+    </div>
+
+    <!-- Snapshots table -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="card-title" style="margin:0">Snapshots</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn-small tracker-filter-btn active" data-filter="all" onclick="trackerSetFilter('all')">All</button>
+          <button class="btn-small tracker-filter-btn" data-filter="open" onclick="trackerSetFilter('open')">Open</button>
+          <button class="btn-small tracker-filter-btn" data-filter="close" onclick="trackerSetFilter('close')">Close</button>
+          <button class="btn-small tracker-filter-btn" data-filter="latest" onclick="trackerSetFilter('latest')">Latest only</button>
+        </div>
+      </div>
+      <div id="tracker-snapshots"></div>
+    </div>
+  </div>
+
+  <div style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-top:14px;padding:10px 12px;background:rgba(255,255,255,.02);border-radius:4px;line-height:1.7">
+    <strong style="color:var(--accent)">How to use:</strong> Add 5-10 stocks to your watchlist. Click "Take OPEN Snapshot" once at market open (9:30 AM), and "Take CLOSE Snapshot" at market close (3:30 PM). Do this for 15 days. Then download the CSV and analyse which signal combos (scanner + confluence + bias) predicted profitable movement.<br>
+    <strong style="color:var(--hold)">Auto-snapshot:</strong> When you open this tab during market hours (9:15-10:00 AM or 15:00-15:45 PM), the app auto-captures if you haven't already taken today's snapshot for that session. Manual button always works.<br>
+    <strong style="color:var(--ink-2)">Storage:</strong> All data lives in this browser's localStorage. Clearing browser data deletes it. Download CSV regularly to keep a backup.
+  </div>
+</section>
+
+<!-- ════════════════ TAB 10 — OPTION STUDY ════════════════ -->
+<section class="panel" id="panel-optstudy">
+  <div class="panel-header">
+    <h2 class="panel-title">Option Study</h2>
+    <span class="panel-sub">Evaluate a specific option contract — underlying direction analysis + premium factors (IV, theta decay, breakeven). Analysis only; no buy/sell verdict yet.</span>
+  </div>
+
+  <!-- Contract selector -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Select Contract</div>
+    <div class="ostudy-selector">
+      <div class="ostudy-field">
+        <label>Underlying</label>
+        <input id="ostudy-symbol" type="text" placeholder="e.g. VEDL" onkeydown="if(event.key==='Enter')ostudyLoadChain()">
+      </div>
+      <div class="ostudy-field">
+        <label>Expiry</label>
+        <select id="ostudy-expiry" disabled><option>— load chain first —</option></select>
+      </div>
+      <div class="ostudy-field">
+        <label>Strike</label>
+        <select id="ostudy-strike" disabled><option>—</option></select>
+      </div>
+      <div class="ostudy-field">
+        <label>Type</label>
+        <select id="ostudy-type">
+          <option value="CE">CE (Call)</option>
+          <option value="PE">PE (Put)</option>
+        </select>
+      </div>
+      <div class="ostudy-field" style="display:flex;align-items:flex-end">
+        <button class="btn" id="ostudy-loadchain-btn" onclick="ostudyLoadChain()">Load Chain</button>
+      </div>
+      <div class="ostudy-field" style="display:flex;align-items:flex-end">
+        <button class="btn btn-primary" id="ostudy-analyze-btn" onclick="ostudyAnalyze()" disabled>Analyse</button>
+      </div>
+    </div>
+    <div id="ostudy-selector-status" style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-top:10px;min-height:14px"></div>
+  </div>
+
+  <div id="ostudy-result"></div>
+</section>
+
 </main>
 
 <script>
@@ -792,6 +1559,8 @@ document.querySelectorAll('.tab').forEach(t => {
     if (tab === 'optscanner' && !window.__optLoaded) loadOptionScanner();
     if (tab === 'backtest') loadBacktest(); // always reload since stats accrue
     if (tab === 'intraday') loadIntraday(); // always reload — refreshes intraday
+    if (tab === 'tracker') loadTracker();
+    if (tab === 'optstudy') loadOptionStudy();
   });
 });
 
@@ -1034,10 +1803,11 @@ function renderScanner(data) {
     <div style="margin-bottom:10px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;letter-spacing:0.05em">
       Scanned <strong style="color:var(--ink-2)">${universeSize}</strong> ${universeLabel} stocks · <strong style="color:var(--ink-2)">${verdictCount}</strong> verdicts produced
       ${universeSize !== verdictCount ? ` · <span style="color:var(--hold)">${universeSize - verdictCount} skipped (insufficient history)</span>` : ''}
+      ${s.blockedByGating != null ? ` · <span style="color:var(--sell)">${s.blockedByGating} blocked by gating</span>` : ''}
     </div>
     <div class="grid grid-12">
-      <div class="cue col-3" style="border-color:var(--buy);"><div class="cue-name">Strong Buy</div><div class="cue-price up">${s.strongBuys || 0}</div></div>
-      <div class="cue col-3" style="border-color:rgba(0,200,150,.4);"><div class="cue-name">Buy</div><div class="cue-price up">${s.buys || 0}</div></div>
+      <div class="cue col-3" style="border-color:var(--buy);"><div class="cue-name">Strong Buy</div><div class="cue-price up">${s.strongBuys || 0}${s.effectiveStrongBuys != null && s.effectiveStrongBuys !== s.strongBuys ? ` <span style="font-size:11px;color:var(--ink-3)">(${s.effectiveStrongBuys} after gating)</span>` : ''}</div></div>
+      <div class="cue col-3" style="border-color:rgba(0,200,150,.4);"><div class="cue-name">Buy</div><div class="cue-price up">${s.buys || 0}${s.effectiveBuys != null && s.effectiveBuys !== s.buys ? ` <span style="font-size:11px;color:var(--ink-3)">(${s.effectiveBuys} after)</span>` : ''}</div></div>
       <div class="cue col-3"><div class="cue-name">Hold</div><div class="cue-price flat">${s.holds || 0}</div></div>
       <div class="cue col-3" style="border-color:rgba(255,77,109,.4);"><div class="cue-name">Sell / Strong Sell</div><div class="cue-price down">${(s.sells || 0) + (s.strongSells || 0)}</div></div>
     </div>
@@ -1051,6 +1821,7 @@ function renderScanner(data) {
         <tr>
           <th onclick="setScanSort('symbol')">Symbol</th>
           <th onclick="setScanSort('signal')">Signal</th>
+          <th>Gating</th>
           <th onclick="setScanSort('confidence')">Confidence</th>
           <th onclick="setScanSort('price')">Price</th>
           <th onclick="setScanSort('return6m')">RS / 6M %</th>
@@ -1064,10 +1835,30 @@ function renderScanner(data) {
         </tr>
       </thead>
       <tbody>
-        ${rows.map(r => `
+        ${rows.map(r => {
+          // Phase 15B: gating badge
+          const gateStock = r.gatingStock?.overall;
+          const gateOption = r.gatingOption?.overall;
+          let gatingBadge = '';
+          if (r.downgradeReason || gateStock === 'FAIL' || gateOption === 'FAIL') {
+            const failures = [...(r.gatingStock?.failures || []), ...(r.gatingOption?.failures || [])];
+            const tooltip = failures.join(' | ').replace(/"/g, "'");
+            // Compact icon legend: stock side · option side
+            const sIcon = gateStock === 'PASS' ? '✓' : gateStock === 'FAIL' ? '✗' : '·';
+            const oIcon = gateOption === 'PASS' ? '✓' : gateOption === 'FAIL' ? '✗' : '·';
+            gatingBadge = `<span class="gating-badge" title="${tooltip}" style="color:${gateOption === 'FAIL' ? 'var(--sell)' : gateStock === 'FAIL' ? 'var(--hold)' : 'var(--buy)'}">S${sIcon} O${oIcon}</span>`;
+          } else if (gateStock === 'PASS') {
+            gatingBadge = `<span class="gating-badge" style="color:var(--buy)">S✓ O${gateOption === 'PASS' ? '✓' : '·'}</span>`;
+          }
+          // Effective signal shown with strikethrough if downgraded
+          const sigDisplay = r.downgradeReason
+            ? `<span class="signal-pill ${r.signal.replace(/\s/g, '.')}" style="text-decoration:line-through;opacity:0.6">${r.signal}</span> → <span class="signal-pill HOLD">HOLD</span>`
+            : `<span class="signal-pill ${r.signal.replace(/\s/g, '.')}">${r.signal}</span>`;
+          return `
           <tr onclick="searchAndOpen('${r.symbol}')">
             <td class="symbol">${r.symbol}</td>
-            <td><span class="signal-pill ${r.signal.replace(/\s/g, '.')}">${r.signal}</span></td>
+            <td>${sigDisplay}</td>
+            <td>${gatingBadge}</td>
             <td><span class="conf-bar"><span style="width:${r.confidence}%;background:${signalColor(r.signal)}"></span></span> ${fmt.num(r.confidence, 0)}</td>
             <td>${fmt.money(r.price)}</td>
             <td class="${fmt.cls(r.return6m)}">${fmt.pct(r.return6m, 1)}</td>
@@ -1079,7 +1870,8 @@ function renderScanner(data) {
             <td>${r.targets?.swing ? fmt.money(r.targets.swing.target) : '—'}</td>
             <td>${r.targets?.swing ? fmt.money(r.targets.swing.stop) : '—'}</td>
           </tr>
-        `).join('')}
+          `;
+        }).join('')}
       </tbody>
     </table>
     <div style="margin-top:8px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;">
@@ -1217,10 +2009,22 @@ function renderStock(data) {
       <div class="signal-large signal-pill ${sig.signal.replace(/\s/g,'.')}">${sig.signal}</div>
     </div>
 
+    ${renderSignalQuality(data.signalQuality, data.signal, data.confluence)}
+    ${renderRangeAndGating(data.rangeBehavior, data.gating, data.signal)}
+    ${renderConfluence(data.confluence, data.signalQuality)}
+
     <div class="grid grid-12">
       <div class="card col-8">
-        <div class="card-title">Price chart · daily</div>
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          <span id="chart-title">Price chart · daily</span>
+          <div class="tf-toggle">
+            <button class="tf-btn active" data-tf="D" onclick="setTimeframe('D')">D</button>
+            <button class="tf-btn" data-tf="W" onclick="setTimeframe('W')">W</button>
+            <button class="tf-btn" data-tf="M" onclick="setTimeframe('M')">M</button>
+          </div>
+        </div>
         <div id="chart"></div>
+        <div id="zones-legend" class="zones-legend"></div>
       </div>
 
       <div class="card col-4">
@@ -1283,12 +2087,315 @@ function renderTargets(targets) {
   `;
 }
 
+// ─── Phase 15B: Range Behavior + Cross-Engine Gating panel ─────
+//
+// Combines two things:
+//   1. Range state card — RANGE_BOUND / TRENDING / BREAKING_OUT + ADX
+//   2. Gating verdict — PASS / FAIL for both stock-level and option-level
+//      signal, with failure reasons and suggested alternative.
+//
+// When gating FAILS for a BUY signal, this is louder than the confluence
+// panel — it tells the user "the system says this trade should not be taken,
+// here's why, here's what to do instead".
+function renderRangeAndGating(rb, gating, sig) {
+  if (!rb && !gating) return '';
+
+  // Range state card
+  let rangeCard = '';
+  if (rb) {
+    const stateColors = {
+      TRENDING: 'var(--buy)',
+      RANGE_BOUND: 'var(--hold)',
+      BREAKING_OUT_UP: 'var(--buy)',
+      BREAKING_OUT_DOWN: 'var(--sell)',
+      UNCLEAR: 'var(--ink-3)',
+    };
+    const color = stateColors[rb.state] || 'var(--ink-3)';
+    rangeCard = `
+      <div class="sq-card">
+        <div class="sq-card-title">Range State</div>
+        <div class="sq-card-value" style="color:${color}">${rb.state || '—'}</div>
+        <div class="sq-card-label">
+          ${rb.rangeLow != null && rb.rangeHigh != null ? `₹${rb.rangeLow} – ₹${rb.rangeHigh}` : ''}
+          ${rb.rangeWidthPct != null ? ` (${rb.rangeWidthPct}% wide)` : ''}
+        </div>
+        <div class="sq-card-sub">
+          ${rb.currentPosition ? `Position: ${rb.currentPosition.replace('_', ' ')}` : ''}
+          ${rb.adx != null ? ` · ADX ${rb.adx}` : ''}
+          ${rb.touchesUpper != null ? ` · ↑${rb.touchesUpper} ↓${rb.touchesLower}` : ''}
+        </div>
+        ${rb.recommendedStrategy ? `<div class="sq-card-sub" style="margin-top:6px;color:var(--ink-2);font-style:italic">${rb.recommendedStrategy}</div>` : ''}
+      </div>
+    `;
+  }
+
+  // Gating banner — only show prominent banner if FAIL on relevant signal
+  let gatingBanner = '';
+  if (gating) {
+    const isBuy = sig?.signal === 'STRONG BUY' || sig?.signal === 'BUY';
+    const isSell = sig?.signal === 'STRONG SELL' || sig?.signal === 'SELL';
+    if (isBuy || isSell) {
+      const stockG = gating.stock || {};
+      const optG = gating.option || {};
+      // Show banner if option gate fails OR stock gate fails
+      const showBanner = stockG.overall === 'FAIL' || optG.overall === 'FAIL';
+      if (showBanner) {
+        // Build per-signal-class rows
+        const renderGatingRow = (label, g) => {
+          if (!g) return '';
+          const verdictColor = g.overall === 'PASS' ? 'var(--buy)' : 'var(--sell)';
+          const icon = g.overall === 'PASS' ? '✓' : '✗';
+          return `
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-top:1px solid rgba(255,255,255,0.04)">
+              <div style="color:${verdictColor};font-weight:700;width:60px">${icon} ${g.overall}</div>
+              <div style="flex:1">
+                <div style="color:var(--ink-1);font-weight:600;font-size:11px;margin-bottom:2px">${label}</div>
+                ${g.failureReasons?.length ? `<div style="color:var(--ink-3);font-size:10px;line-height:1.5">${g.failureReasons.map(f => '• ' + f).join('<br>')}</div>` : ''}
+                ${g.suggestedAlternative ? `<div style="color:var(--accent);font-size:10px;margin-top:4px;font-style:italic">→ ${g.suggestedAlternative}</div>` : ''}
+              </div>
+            </div>
+          `;
+        };
+        gatingBanner = `
+          <div class="sq-gating-banner">
+            <div class="sq-gating-title">⚠ Cross-Engine Gating</div>
+            <div class="sq-gating-sub">Scanner says <strong>${sig.signal}</strong>. Quality engines disagree:</div>
+            ${renderGatingRow('Stock trade', stockG)}
+            ${renderGatingRow('Option trade (CE/PE BUY)', optG)}
+          </div>
+        `;
+      }
+    }
+  }
+
+  return `
+    ${gatingBanner}
+    ${rangeCard ? `<div class="sq-grid">${rangeCard}</div>` : ''}
+  `;
+}
+
+// ─── Phase 15A: Signal Quality panel ─────
+// Surfaces the THREE post-TATASTEEL safety checks BEFORE the user sees
+// the confluence score. If a block is in effect, this is the most important
+// thing on the page.
+//
+//   1. Resistance Cluster (how stacked is the path above?)
+//   2. Volume Character (accumulation vs distribution at current price)
+//   3. Invalidation Level (the hard-exit price for this thesis)
+function renderSignalQuality(sq, sig, conf) {
+  if (!sq) return '';
+
+  const isBuySignal = sig?.signal === 'STRONG BUY' || sig?.signal === 'BUY';
+
+  // CRITICAL: block banner shown first if signal is BUY but block flag is set
+  let blockBanner = '';
+  if (sq.blockBuySignal && isBuySignal) {
+    blockBanner = `
+      <div class="sq-block-banner">
+        <div class="sq-block-title">⚠ BUY SIGNAL OVERRIDE</div>
+        <div class="sq-block-body">
+          <strong>The scanner says ${sig.signal}, but signal quality checks recommend NOT taking a directional BUY here.</strong><br>
+          Reason: ${sq.blockReason}<br>
+          <span style="color:var(--ink-3);font-size:11px">Consider: credit spread, wait for cleaner setup, or skip entirely. Do not buy CE options.</span>
+        </div>
+      </div>
+    `;
+  }
+
+  // Resistance cluster card
+  const rc = sq.resistanceCluster || {};
+  const rcColor = rc.penalty < -10 ? 'var(--sell)' : rc.penalty < 0 ? 'var(--hold)' : 'var(--buy)';
+  const rcCard = `
+    <div class="sq-card">
+      <div class="sq-card-title">Resistance Cluster</div>
+      <div class="sq-card-value" style="color:${rcColor}">
+        ${rc.count || 0} <span style="color:var(--ink-3);font-size:11px">within 3%</span>
+      </div>
+      <div class="sq-card-label">${rc.label || '—'}</div>
+      ${rc.levelsAbove?.length ? `<div class="sq-card-sub">Levels: ₹${rc.levelsAbove.join(' · ₹')}</div>` : ''}
+      ${rc.penalty !== 0 ? `<div class="sq-card-adj" style="color:${rcColor}">${rc.penalty > 0 ? '+' : ''}${rc.penalty} conf</div>` : ''}
+    </div>
+  `;
+
+  // Volume character card
+  const vc = sq.volumeCharacter || {};
+  const vcColor = vc.adjustment < -5 ? 'var(--sell)' : vc.adjustment < 0 ? 'var(--hold)' : vc.adjustment > 0 ? 'var(--buy)' : 'var(--ink-2)';
+  const vcCard = `
+    <div class="sq-card">
+      <div class="sq-card-title">Volume Character</div>
+      <div class="sq-card-value" style="color:${vcColor}">${vc.category || 'NORMAL'}</div>
+      <div class="sq-card-label">${vc.volumeMultiple != null ? vc.volumeMultiple.toFixed(2) + '× avg' : '—'} ${vc.last3CPR?.[2] != null ? '· CPR ' + vc.last3CPR[2].toFixed(2) : ''}</div>
+      ${vc.note ? `<div class="sq-card-sub">${vc.note}</div>` : ''}
+      ${vc.adjustment !== 0 ? `<div class="sq-card-adj" style="color:${vcColor}">${vc.adjustment > 0 ? '+' : ''}${vc.adjustment} conf</div>` : ''}
+    </div>
+  `;
+
+  // Invalidation card
+  const inv = sq.invalidation || {};
+  const invCard = inv.underlyingPrice ? `
+    <div class="sq-card sq-card-invalidation">
+      <div class="sq-card-title">Invalidation Level</div>
+      <div class="sq-card-value" style="color:var(--sell)">
+        ₹${inv.underlyingPrice}
+      </div>
+      <div class="sq-card-label">${inv.distancePct != null ? inv.distancePct.toFixed(2) + '% away' : ''}</div>
+      <div class="sq-card-sub" style="margin-top:4px;color:var(--ink-2);font-style:italic">
+        ${inv.underlyingBasis}
+      </div>
+      ${inv.exitAction ? `<div class="sq-card-sub" style="color:var(--ink-3);margin-top:4px">Action: ${inv.exitAction}</div>` : ''}
+      ${inv.premiumFloorPct ? `<div class="sq-card-sub" style="color:var(--ink-3)">For options: exit if premium &lt; ${(inv.premiumFloorPct * 100).toFixed(0)}% of entry</div>` : ''}
+    </div>
+  ` : '';
+
+  return `
+    ${blockBanner}
+    <div class="sq-grid">
+      ${rcCard}
+      ${vcCard}
+      ${invCard}
+    </div>
+  `;
+}
+
+// ─── Confluence Score panel ─────
+// Displays the composite 0-100 score with full breakdown for auditability.
+// Never just shows the number — always shows WHY.
+function renderConfluence(conf, sq) {
+  if (!conf || conf.score == null) return '';
+
+  // Tier styling
+  const tierColors = {
+    S: { color: 'var(--buy)', bg: 'rgba(78,206,121,0.18)', label: 'EXCEPTIONAL' },
+    A: { color: 'var(--buy)', bg: 'rgba(78,206,121,0.10)', label: 'STRONG' },
+    B: { color: 'var(--hold)', bg: 'rgba(255,184,0,0.10)', label: 'MARGINAL' },
+    C: { color: 'var(--ink-3)', bg: 'rgba(160,168,181,0.08)', label: 'WEAK' },
+    D: { color: 'var(--sell)', bg: 'rgba(255,107,107,0.10)', label: 'AVOID' },
+  };
+  const t = tierColors[conf.tier] || tierColors.C;
+
+  // Component rows
+  const componentLabels = {
+    chartStructure: 'Chart structure',
+    biasAlignment:  'Bias alignment',
+    catalystImpact: 'Catalyst impact',
+    technicals:     'Technical signals',
+    liquidity:      'Liquidity',
+  };
+  const componentNotes = {
+    chartStructure: (bd) => {
+      const parts = [];
+      if (bd.trendTemplate >= 75) parts.push('trend strong');
+      else if (bd.trendTemplate >= 50) parts.push('trend mixed');
+      else parts.push('trend weak');
+      if (bd.zoneProximity >= 70) parts.push('near key zone');
+      if (bd.mtfAlignment >= 90) parts.push('all timeframes aligned');
+      else if (bd.mtfAlignment >= 60) parts.push('partial alignment');
+      return parts.join(', ');
+    },
+    biasAlignment: (bd) => {
+      if (bd.reason) return bd.reason;
+      if (!bd.marketBias) return 'unknown';
+      return `${bd.stockSignal} on ${bd.marketBias.toLowerCase()} market`;
+    },
+    catalystImpact: (bd) => {
+      if (bd.reason) return bd.reason;
+      if (bd.affectingCatalysts) return `${bd.sector} sector, ${bd.affectingCatalysts}`;
+      return '';
+    },
+    technicals: (bd) => {
+      const parts = [];
+      if (bd.rsi >= 80) parts.push('RSI optimal');
+      else if (bd.rsi >= 60) parts.push('RSI ok');
+      else parts.push('RSI weak');
+      if (bd.macd >= 80) parts.push('MACD confirms');
+      else if (bd.macd <= 30) parts.push('MACD conflicts');
+      if (bd.volume >= 80) parts.push('volume strong');
+      else if (bd.volume <= 30) parts.push('volume weak');
+      return parts.join(', ');
+    },
+    liquidity: (bd) => {
+      const parts = [];
+      if (bd.volume >= 80) parts.push('volume normal+');
+      else if (bd.volume <= 30) parts.push('thin');
+      if (bd.rangePosition >= 80) parts.push('mid-range');
+      else if (bd.rangePosition <= 60) parts.push('near extreme');
+      return parts.join(', ');
+    },
+  };
+
+  const componentRows = Object.entries(conf.components).map(([key, comp]) => {
+    const score = comp.score;
+    const barWidth = score; // 0-100
+    const barColor = score >= 80 ? 'var(--buy)' : score >= 55 ? 'var(--hold)' : 'var(--sell)';
+    const note = componentNotes[key] ? componentNotes[key](comp.breakdown) : '';
+    return `
+      <div class="confluence-row">
+        <div class="confluence-label">${componentLabels[key] || key}</div>
+        <div class="confluence-bar-wrap">
+          <div class="confluence-bar" style="width:${barWidth}%;background:${barColor}"></div>
+        </div>
+        <div class="confluence-score">${score}<span style="color:var(--ink-3);font-size:10px">/100</span></div>
+        <div class="confluence-weight">×${comp.weight}%</div>
+        <div class="confluence-note">${note}</div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="confluence-panel" style="background:${t.bg};border-left:3px solid ${t.color}">
+      <div class="confluence-header">
+        <div>
+          <div class="confluence-title">Confluence Score</div>
+          <div class="confluence-sub">Combined view: chart + bias + catalysts + technicals + liquidity</div>
+        </div>
+        <div class="confluence-score-big">
+          <div class="confluence-num" style="color:${t.color}">${conf.score}<span style="color:var(--ink-3);font-size:18px">/100</span></div>
+          <div class="confluence-tier" style="color:${t.color}">Tier ${conf.tier} · ${t.label}</div>
+          ${conf.adjustment15A != null && conf.adjustment15A !== 0 ? `
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-3);margin-top:6px">
+              Base ${conf.scoreBefore15A}${conf.adjustment15A > 0 ? ' +' : ' '}${conf.adjustment15A} signal-quality adj
+            </div>
+          ` : ''}
+        </div>
+      </div>
+      <div class="confluence-body">
+        ${componentRows}
+      </div>
+    </div>
+  `;
+}
+
+// ─── Chart with multi-timeframe support + S/R zone overlays ─────
+// Timeframe state lives on window.__stockTf so the toggle persists across re-renders.
+window.__stockTf = window.__stockTf || 'D';
+
+function setTimeframe(tf) {
+  window.__stockTf = tf;
+  document.querySelectorAll('.tf-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tf === tf);
+  });
+  const titleEl = document.getElementById('chart-title');
+  if (titleEl) {
+    titleEl.textContent = `Price chart · ${tf === 'D' ? 'daily' : tf === 'W' ? 'weekly' : 'monthly'}`;
+  }
+  // Re-render chart with new timeframe, keep zones (zones come from daily data)
+  if (window.__lastStockData) renderChart(window.__lastStockData);
+}
+
 async function renderChart(data) {
+  window.__lastStockData = data;
   const el = document.getElementById('chart');
   if (!el) return;
   el.innerHTML = '';
+  const legendEl = document.getElementById('zones-legend');
+  if (legendEl) legendEl.innerHTML = '';
+
+  const tf = window.__stockTf || 'D';
+  // Daily: 180 days. Weekly: 3 years. Monthly: 10 years (will get clipped to available).
+  const days = tf === 'D' ? 180 : tf === 'W' ? 365 * 3 : 365 * 10;
+
   try {
-    const res = await fetch('/api/history/' + encodeURIComponent(data.symbol) + '?days=180');
+    const res = await fetch(`/api/history/${encodeURIComponent(data.symbol)}?resolution=${tf}&days=${days}`);
     const payload = await res.json();
     const raw = payload.candles || [];
     if (!raw.length) {
@@ -1308,8 +2415,6 @@ async function renderChart(data) {
       borderUpColor: '#00c896', borderDownColor: '#ff4d6d',
       wickUpColor: '#00c896', wickDownColor: '#ff4d6d',
     });
-    // Server returns long keys: { time, open, high, low, close, volume }
-    // Accept both shapes defensively
     const candleData = raw.map(c => ({
       time: c.time ?? c.t,
       open: c.open ?? c.o,
@@ -1318,13 +2423,78 @@ async function renderChart(data) {
       close: c.close ?? c.c,
     })).filter(c => c.time && c.close != null);
     candleSeries.setData(candleData);
-    chart.timeScale().fitContent();
 
-    // Resize on window
+    // ─── Draw zones as horizontal price lines ─────────
+    // Zones come from the analyze response (computed on daily candles, so they
+    // overlay correctly on any timeframe). Top 8 closest are shown to avoid spam.
+    const zones = (data.zones && data.zones.zones) || [];
+    const topZones = zones.slice(0, 8);
+    for (const z of topZones) {
+      // Color by type: support = green, resistance = red, neutral pivots = grey
+      const color = z.type === 'resistance' ? '#ff4d6d'
+                  : z.type === 'support'    ? '#00c896'
+                  : '#a0a8b5';
+      // Line style by source: pivot = dashed, swing = solid, round = dotted
+      const lineStyle = z.source === 'pivot' ? 2 // LightweightCharts.LineStyle.Dashed
+                       : z.source === 'round' ? 1 // Dotted
+                       : 0; // Solid
+      // Width by strength
+      const lineWidth = Math.min(3, Math.max(1, Math.round(z.strength)));
+      candleSeries.createPriceLine({
+        price: z.price,
+        color: color,
+        lineWidth: lineWidth,
+        lineStyle: lineStyle,
+        axisLabelVisible: true,
+        title: `${z.timeframe}·${z.kind}`,
+      });
+    }
+
+    chart.timeScale().fitContent();
     const resize = () => {
       if (chart && el.clientWidth) chart.applyOptions({ width: el.clientWidth });
     };
     window.addEventListener('resize', resize, { once: false });
+
+    // ─── Render zones legend below chart ─────────
+    if (legendEl && zones.length > 0) {
+      const counts = data.zones.counts;
+      const tfLabel = { Q: 'Quarterly', M: 'Monthly', W: 'Weekly', psych: 'Round' };
+      const groupedByTf = { Q: [], M: [], W: [], psych: [] };
+      for (const z of zones) {
+        if (groupedByTf[z.timeframe]) groupedByTf[z.timeframe].push(z);
+      }
+      const showStrength = (s) => '★'.repeat(Math.min(5, Math.max(1, Math.round(s)))) + '☆'.repeat(5 - Math.min(5, Math.max(1, Math.round(s))));
+      legendEl.innerHTML = `
+        <div class="zones-legend-title">
+          Strong zones · ${counts.total} found
+          (${counts.resistance} resistance, ${counts.support} support)
+        </div>
+        ${['Q', 'M', 'W', 'psych'].map(t => {
+          const arr = groupedByTf[t];
+          if (!arr || arr.length === 0) return '';
+          // Show top 5 closest per timeframe
+          const top = arr.slice(0, 5);
+          return `
+            <div style="margin-top:8px">
+              <div style="color:var(--ink-2);font-size:10px;letter-spacing:0.08em;margin-bottom:4px">${tfLabel[t].toUpperCase()}</div>
+              ${top.map(z => `
+                <div class="zone-row">
+                  <span class="zone-pill tf-${z.timeframe}">${z.timeframe === 'psych' ? '◯' : z.timeframe}</span>
+                  <span class="zone-price">₹${z.price}</span>
+                  <span style="color:${z.type === 'resistance' ? 'var(--sell)' : z.type === 'support' ? 'var(--buy)' : 'var(--ink-3)'};min-width:80px">
+                    ${z.type === 'resistance' ? '↑ R' : z.type === 'support' ? '↓ S' : '— P'} ${z.kind === 'swing_high' ? '(swing)' : z.kind === 'swing_low' ? '(swing)' : z.kind === 'round_number' ? '(round)' : '(' + z.kind + ')'}
+                  </span>
+                  <span class="zone-strength" title="strength ${z.strength}/5">${showStrength(z.strength)}</span>
+                  <span class="zone-dist">${z.distancePct}% away</span>
+                  ${z.touches > 1 ? `<span style="color:var(--ink-3);font-size:10px">${z.touches}× touched</span>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }).join('')}
+      `;
+    }
   } catch (e) {
     el.innerHTML = '<div class="empty" style="padding:40px">Chart error: ' + e.message + '</div>';
   }
@@ -2309,12 +3479,17 @@ async function loadOptionScanner(force) {
     const tierA = dq?.tierA || 0;
     const tierB = dq?.tierB || 0;
     const tierC = dq?.tierC || 0;
+    // Phase 15C: show how many stocks were gated out before option fetch
+    const gatedHtml = dq?.gatedOutCount > 0
+      ? ` · <span style="color:var(--sell)" title="Stocks with STRONG BUY/SELL signal that failed Cross-Engine Gating (volume distribution, resistance cluster, range-bound, etc). Excluded from option chain fetch to prevent picks on unsafe setups.">${dq.gatedOutCount} blocked by gating</span>`
+      : '';
     summaryEl.innerHTML = `
       <span style="color:var(--buy)">${data.summary.bullish} CE</span> ·
       <span style="color:var(--sell)">${data.summary.bearish} PE</span> ·
       <span style="color:var(--buy);font-weight:600">${tierA} Tier A</span> ·
       <span style="color:var(--hold)">${tierB} Tier B</span> ·
       <span style="color:var(--ink-3)">${tierC} Tier C</span>
+      ${gatedHtml}
       ${data.fromCache ? ' · <span style="color:var(--ink-3)">cached</span>' : ''}
       ${skipBreakdownHtml}
     `;
@@ -2388,6 +3563,7 @@ async function loadOptionScanner(force) {
             <th title="Composite Buy Score (0-100). Weighs Quality (40%) + Theta Safety (30%) + Liquidity (20%) + Proximity (10%)">BuyScore</th>
             <th title="Tier A: high conviction. Tier B: moderate. Tier C: speculative.">Tier</th>
             <th>IV</th><th>Conf</th>
+            <th title="Cross-Engine Gating: did this pick pass all five quality engines? (Confluence, Range, Volume Character, Resistance Cluster, Signal Quality)">Gates</th>
           </tr>
         </thead>
         <tbody>
@@ -2439,6 +3615,9 @@ async function loadOptionScanner(force) {
                 <td style="font-family:'JetBrains Mono',monospace;color:${tierColor};font-weight:600;text-align:center">${r.tier || '—'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-2);font-size:11px">${r.iv != null ? r.iv + '%' : '—'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--ink-3);font-size:11px">${r.stockConfidence}</td>
+                <td style="font-family:'JetBrains Mono',monospace;font-size:11px;text-align:center" title="${r.gatingOption?.overall === 'PASS' ? 'Passed all five quality engines' : 'Gating data unavailable'} · Range: ${r.rangeState || '—'} · Volume: ${r.volumeCharacter || '—'} · Resistance cluster: ${r.resistanceClusterCount ?? '—'}">
+                  ${r.gatingOption?.overall === 'PASS' ? '<span style="color:var(--buy);font-weight:700">5/5 ✓</span>' : '<span style="color:var(--ink-3)">—</span>'}
+                </td>
               </tr>
             `;
           }).join('')}
@@ -2457,6 +3636,28 @@ async function loadOptionScanner(force) {
         · <strong>Expiry</strong> shown as month/date. Near-month = easier to trade, more theta. Next month = better math, may need to search the exact contract in your broker.<br>
         · Hover any row for upstream stock confidence breakdown.
       </div>
+      ${(dq?.gatedOutStocks && dq.gatedOutStocks.length > 0) ? `
+        <div style="margin-top:16px;padding:14px 18px;background:rgba(255,184,0,.05);border-left:3px solid var(--hold);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.1em;color:var(--hold);font-weight:700;margin-bottom:8px">⚠ ${dq.gatedOutStocks.length} STOCKS BLOCKED BY CROSS-ENGINE GATING</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);margin-bottom:10px;line-height:1.6">
+            These stocks had STRONG BUY/SELL signals but failed quality gates (volume distribution, resistance cluster, range-bound, etc).
+            Showing them here for transparency — they were excluded from option chain fetching to prevent picks on unsafe setups.
+          </div>
+          <div style="display:grid;grid-template-columns:120px 100px 1fr;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-2);padding-bottom:6px;border-bottom:1px solid var(--line);margin-bottom:6px">
+            <div>SYMBOL</div><div>SIGNAL</div><div>WHY BLOCKED</div>
+          </div>
+          ${dq.gatedOutStocks.slice(0, 20).map(g => `
+            <div style="display:grid;grid-template-columns:120px 100px 1fr;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.03)">
+              <div style="color:var(--ink-1);font-weight:600">${g.symbol}</div>
+              <div style="color:${g.signal === 'STRONG BUY' ? 'var(--buy)' : 'var(--sell)'}">${g.signal}</div>
+              <div style="color:var(--ink-3);font-size:10px;line-height:1.5">
+                ${(g.failures || []).map(f => '• ' + f).join('<br>')}
+                ${g.suggestedAlternative ? `<br><span style="color:var(--accent);font-style:italic">→ ${g.suggestedAlternative}</span>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
     `;
   } catch (e) {
     tableEl.innerHTML = '<div class="empty">Failed: ' + e.message + '</div>';
@@ -3026,6 +4227,650 @@ document.getElementById('status-flush').addEventListener('click', async () => {
 statusModal.addEventListener('click', (e) => {
   if (e.target === statusModal) statusModal.classList.remove('open');
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ═════════════════════ TRACKER (Tab 09) ════════════════════════
+// ═══════════════════════════════════════════════════════════════
+//
+// Data collection tool. NOT a trading tool. Records signals + price for
+// watchlist stocks at market open and close, persists to localStorage.
+// User exports CSV after 15 days to analyse which signal combos predict
+// profitable movement.
+//
+// Storage schema (localStorage key 'investiq_tracker_v1'):
+//   {
+//     watchlist: ["VEDL", "TCS", ...],     // max 10
+//     snapshots: [<snapshot>, ...],         // append-only
+//     version: 1
+//   }
+//
+// Each snapshot has fields matching /api/tracker/snapshot/:symbol response,
+// plus { id, date, time, session }.
+
+const TRACKER_KEY = 'investiq_tracker_v1';
+const TRACKER_MAX_WATCHLIST = 10;
+
+function trackerLoad() {
+  try {
+    const raw = localStorage.getItem(TRACKER_KEY);
+    if (!raw) return { watchlist: [], snapshots: [], version: 1 };
+    const data = JSON.parse(raw);
+    // Defensive: make sure shape is right
+    if (!Array.isArray(data.watchlist)) data.watchlist = [];
+    if (!Array.isArray(data.snapshots)) data.snapshots = [];
+    return data;
+  } catch (e) {
+    console.warn('[tracker] failed to load:', e);
+    return { watchlist: [], snapshots: [], version: 1 };
+  }
+}
+
+function trackerSave(data) {
+  try {
+    localStorage.setItem(TRACKER_KEY, JSON.stringify(data));
+  } catch (e) {
+    // Quota exceeded? Tell the user.
+    trackerStatus('⚠ Storage full. Download CSV and clear data.', 'sell');
+  }
+}
+
+// Status line under action buttons
+function trackerStatus(msg, kind) {
+  const el = document.getElementById('tracker-action-status');
+  if (!el) return;
+  const color = kind === 'sell' ? 'var(--sell)'
+              : kind === 'buy' ? 'var(--buy)'
+              : kind === 'hold' ? 'var(--hold)'
+              : 'var(--ink-3)';
+  el.style.color = color;
+  el.textContent = msg;
+  // Clear after 6 seconds for success messages
+  if (kind === 'buy') setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 6000);
+}
+
+// Filter state for snapshots table
+window.__trackerFilter = 'all';
+
+function trackerSetFilter(filter) {
+  window.__trackerFilter = filter;
+  document.querySelectorAll('.tracker-filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === filter);
+  });
+  trackerRenderSnapshots();
+}
+
+function loadTracker() {
+  trackerRenderWatchlist();
+  trackerRenderSnapshots();
+  trackerRenderStats();
+  trackerMaybeAutoSnapshot();
+}
+
+// ─── Watchlist management ─────
+function trackerAddSymbol() {
+  const input = document.getElementById('tracker-add-input');
+  const sym = (input.value || '').trim().toUpperCase().replace(/[^A-Z0-9_\-&]/g, '');
+  if (!sym) return;
+  const data = trackerLoad();
+  if (data.watchlist.includes(sym)) {
+    trackerStatus(`${sym} already in watchlist`, 'hold');
+    return;
+  }
+  if (data.watchlist.length >= TRACKER_MAX_WATCHLIST) {
+    trackerStatus(`Watchlist full (${TRACKER_MAX_WATCHLIST} max). Remove one first.`, 'sell');
+    return;
+  }
+  data.watchlist.push(sym);
+  trackerSave(data);
+  input.value = '';
+  trackerStatus(`Added ${sym}`, 'buy');
+  trackerRenderWatchlist();
+}
+
+function trackerRemoveSymbol(sym) {
+  const data = trackerLoad();
+  data.watchlist = data.watchlist.filter(s => s !== sym);
+  trackerSave(data);
+  trackerRenderWatchlist();
+}
+
+function trackerRenderWatchlist() {
+  const data = trackerLoad();
+  const el = document.getElementById('tracker-watchlist');
+  const countEl = document.getElementById('tracker-watchlist-count');
+  if (!el) return;
+  if (countEl) countEl.textContent = `(${data.watchlist.length}/${TRACKER_MAX_WATCHLIST})`;
+  if (data.watchlist.length === 0) {
+    el.innerHTML = '<div style="color:var(--ink-3);font-size:11px;font-family:JetBrains Mono,monospace;text-align:center;padding:12px 0">No stocks added yet</div>';
+    return;
+  }
+  el.innerHTML = data.watchlist.map(sym => `
+    <div class="tracker-watchlist-row">
+      <span class="sym">${sym}</span>
+      <button onclick="trackerRemoveSymbol('${sym}')" title="Remove">×</button>
+    </div>
+  `).join('');
+}
+
+// ─── Snapshot capture ─────
+async function trackerTakeSnapshot(session) {
+  const data = trackerLoad();
+  if (data.watchlist.length === 0) {
+    trackerStatus('Add stocks to watchlist first', 'hold');
+    return;
+  }
+  const btn = document.getElementById(`tracker-snap-${session}-btn`);
+  if (btn) { btn.disabled = true; btn.textContent = `Capturing ${session.toUpperCase()}...`; }
+
+  const today = new Date().toISOString().substring(0, 10);
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+  let added = 0, failed = 0;
+  const failures = [];
+  for (const sym of data.watchlist) {
+    // Skip if we already have THIS session's snapshot for THIS day for THIS stock
+    const exists = data.snapshots.some(s => s.date === today && s.session === session && s.symbol === sym);
+    if (exists) continue;
+    try {
+      const res = await fetch(`/api/tracker/snapshot/${encodeURIComponent(sym)}`);
+      const payload = await res.json();
+      if (!payload.ok) {
+        failed++;
+        failures.push(`${sym}: ${payload.reason || payload.error || 'unknown'}`);
+        continue;
+      }
+      const snap = {
+        id: `${today}-${sym}-${session}`,
+        date: today,
+        time: hhmm,
+        session,
+        ...payload, // includes symbol, price, scanner_*, confluence_*, etc.
+      };
+      data.snapshots.push(snap);
+      added++;
+    } catch (e) {
+      failed++;
+      failures.push(`${sym}: ${e.message}`);
+    }
+  }
+  trackerSave(data);
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = session === 'open' ? '📸 Take OPEN Snapshot' : '📸 Take CLOSE Snapshot';
+  }
+  if (added > 0) {
+    trackerStatus(`Captured ${added} stocks${failed ? ` (${failed} failed)` : ''}`, 'buy');
+  } else if (failed > 0) {
+    trackerStatus(`All ${failed} failed: ${failures[0]}`, 'sell');
+    console.warn('[tracker] failures:', failures);
+  } else {
+    trackerStatus('Already captured today for this session', 'hold');
+  }
+  trackerRenderSnapshots();
+  trackerRenderStats();
+}
+
+// ─── Auto-snapshot: only when tab opened during market windows ─────
+// Two windows: 9:15-10:00 AM (open) and 15:00-15:45 PM (close). IST.
+// If user hasn't already taken today's snapshot for that session, auto-trigger.
+function trackerMaybeAutoSnapshot() {
+  const now = new Date();
+  // Render runs in UTC; we're showing IST to user. Convert.
+  const istOffsetMin = 330; // IST is UTC+5:30
+  const istMin = (now.getUTCHours() * 60 + now.getUTCMinutes() + istOffsetMin) % (24 * 60);
+  const todayIST = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes() + istOffsetMin));
+  const dateStr = todayIST.toISOString().substring(0, 10);
+
+  // Open window: 09:15 (555) — 10:00 (600)
+  const inOpenWindow = istMin >= 555 && istMin <= 600;
+  // Close window: 15:00 (900) — 15:45 (945)
+  const inCloseWindow = istMin >= 900 && istMin <= 945;
+  if (!inOpenWindow && !inCloseWindow) return;
+
+  const session = inOpenWindow ? 'open' : 'close';
+  const data = trackerLoad();
+  if (data.watchlist.length === 0) return;
+
+  // Already took THIS session's snapshot for ANY stock today? Skip auto.
+  // (Catch missed snapshots by retrying, but don't spam.)
+  const tookToday = data.snapshots.some(s => s.date === dateStr && s.session === session);
+  if (tookToday) return;
+
+  trackerStatus(`Auto-capturing ${session.toUpperCase()} snapshot...`, 'hold');
+  setTimeout(() => trackerTakeSnapshot(session), 1000);
+}
+
+// ─── Snapshots table render ─────
+function trackerRenderSnapshots() {
+  const data = trackerLoad();
+  const el = document.getElementById('tracker-snapshots');
+  if (!el) return;
+  const filter = window.__trackerFilter || 'all';
+
+  let snaps = data.snapshots.slice(); // copy
+  if (filter === 'open') snaps = snaps.filter(s => s.session === 'open');
+  else if (filter === 'close') snaps = snaps.filter(s => s.session === 'close');
+  else if (filter === 'latest') {
+    // Most recent snapshot per (symbol, session) — collapses repeated days
+    const seen = new Set();
+    const latest = [];
+    // Iterate newest first
+    for (const s of [...snaps].sort((a, b) => (b.date + b.session).localeCompare(a.date + a.session))) {
+      const key = `${s.symbol}-${s.session}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      latest.push(s);
+    }
+    snaps = latest;
+  }
+
+  if (snaps.length === 0) {
+    el.innerHTML = '<div style="color:var(--ink-3);font-size:11px;font-family:JetBrains Mono,monospace;text-align:center;padding:30px">No snapshots yet. Add stocks to watchlist and click "Take OPEN/CLOSE Snapshot".</div>';
+    return;
+  }
+
+  // Newest first
+  snaps.sort((a, b) => {
+    const k1 = a.date + a.session;
+    const k2 = b.date + b.session;
+    return k2.localeCompare(k1);
+  });
+
+  // For movement: compute returns where we have paired open/close on same day,
+  // and overnight close→next-day-open per stock.
+  const byKey = {};
+  for (const s of data.snapshots) byKey[`${s.date}-${s.symbol}-${s.session}`] = s;
+
+  // Build rows
+  const rows = snaps.map(s => {
+    const sigCls = (s.scanner_signal || '').replace(/\s/g, '.');
+    const tierCls = s.confluence_tier || 'C';
+
+    // Daily return = open → close (same day, same symbol)
+    let dayReturn = null;
+    if (s.session === 'close') {
+      const openSnap = byKey[`${s.date}-${s.symbol}-open`];
+      if (openSnap && openSnap.price && s.price) {
+        dayReturn = ((s.price - openSnap.price) / openSnap.price) * 100;
+      }
+    }
+    // Overnight return = previous day close → today open (same symbol)
+    let overnightReturn = null;
+    if (s.session === 'open') {
+      // Find the previous close for this symbol — most recent close strictly before today
+      let prevClose = null;
+      for (const candidate of data.snapshots) {
+        if (candidate.symbol !== s.symbol || candidate.session !== 'close') continue;
+        if (candidate.date >= s.date) continue;
+        if (!prevClose || candidate.date > prevClose.date) prevClose = candidate;
+      }
+      if (prevClose && prevClose.price && s.price) {
+        overnightReturn = ((s.price - prevClose.price) / prevClose.price) * 100;
+      }
+    }
+
+    const fmtRet = (r) => {
+      if (r == null) return '<span style="color:var(--ink-3)">—</span>';
+      const cls = r > 0 ? 'var(--buy)' : r < 0 ? 'var(--sell)' : 'var(--ink-2)';
+      return `<span style="color:${cls}">${r > 0 ? '+' : ''}${r.toFixed(2)}%</span>`;
+    };
+
+    return `
+      <tr>
+        <td><span class="tracker-session-pill ${s.session}">${s.session.toUpperCase()}</span></td>
+        <td>${s.date}</td>
+        <td><span class="col-sym">${s.symbol}</span></td>
+        <td>₹${(s.price || 0).toFixed(2)}</td>
+        <td class="col-sig ${sigCls}">${s.scanner_signal || '—'}</td>
+        <td>${s.confluence_score != null ? s.confluence_score : '—'}</td>
+        <td><span class="tracker-tier ${tierCls}">${s.confluence_tier || '—'}</span></td>
+        <td style="color:var(--ink-3)">${s.market_bias || '—'}</td>
+        <td>${fmtRet(dayReturn)}</td>
+        <td>${fmtRet(overnightReturn)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="overflow-x:auto">
+      <table class="tracker-snap-table">
+        <thead>
+          <tr>
+            <th>Session</th><th>Date</th><th>Symbol</th><th>Price</th>
+            <th>Scanner</th><th>Conf</th><th>Tier</th><th>Bias</th>
+            <th>Day Δ</th><th>O/N Δ</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+// ─── Stats panel ─────
+function trackerRenderStats() {
+  const data = trackerLoad();
+  const el = document.getElementById('tracker-stats');
+  if (!el) return;
+
+  const dates = [...new Set(data.snapshots.map(s => s.date))].sort();
+  const opens = data.snapshots.filter(s => s.session === 'open').length;
+  const closes = data.snapshots.filter(s => s.session === 'close').length;
+  const oldestDate = dates[0] || null;
+  const newestDate = dates[dates.length - 1] || null;
+
+  // Storage usage estimate
+  let storageKb = 0;
+  try {
+    const raw = localStorage.getItem(TRACKER_KEY) || '';
+    storageKb = Math.round(new Blob([raw]).size / 1024 * 10) / 10;
+  } catch (_) {}
+
+  el.innerHTML = `
+    Days tracked: <span style="color:var(--ink-1)">${dates.length}</span> / 15<br>
+    Total snapshots: <span style="color:var(--ink-1)">${data.snapshots.length}</span><br>
+    Opens: ${opens} · Closes: ${closes}<br>
+    ${oldestDate ? `From: ${oldestDate}<br>To: ${newestDate}<br>` : ''}
+    Storage: ${storageKb} KB
+  `;
+}
+
+// ─── CSV export ─────
+function trackerExportCSV() {
+  const data = trackerLoad();
+  if (data.snapshots.length === 0) {
+    trackerStatus('No snapshots to export', 'hold');
+    return;
+  }
+
+  // CSV columns chosen for analysis. Order matters — pivot-friendly columns first.
+  const columns = [
+    'id', 'date', 'time', 'session', 'symbol', 'price', 'changePct',
+    'scanner_signal', 'scanner_confidence',
+    'confluence_score', 'confluence_tier',
+    'confluence_score_raw', 'confluence_tier_raw', 'confluence_adjustment',
+    'confluence_chart', 'confluence_bias', 'confluence_catalyst', 'confluence_technicals', 'confluence_liquidity',
+    'rsi', 'macd_bullish', 'volume_ratio', 'trend_score', 'dist_from_52wh_pct',
+    'market_bias', 'market_bias_score',
+    'nearest_zone_price', 'nearest_zone_type', 'nearest_zone_dist_pct',
+    // Phase 15A signal-quality fields
+    'resistance_cluster_count', 'resistance_cluster_label',
+    'volume_character', 'volume_multiple', 'volume_cpr_today',
+    'invalidation_price', 'invalidation_distance_pct',
+    'block_buy_signal', 'block_reason',
+    // Phase 15B range + gating fields
+    'range_state', 'range_low', 'range_high', 'range_position', 'adx',
+    'range_suppress_directional',
+    'gating_stock_overall', 'gating_stock_downgrade', 'gating_stock_failures',
+    'gating_option_overall', 'gating_option_downgrade', 'gating_option_failures',
+    'gating_option_alternative',
+    'capturedAt',
+  ];
+
+  // Build CSV
+  const escape = (v) => {
+    if (v == null) return '';
+    const s = String(v);
+    // Quote if contains comma, quote, or newline
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  };
+  const header = columns.join(',');
+  const rows = data.snapshots.map(s => columns.map(c => escape(s[c])).join(','));
+  const csv = header + '\n' + rows.join('\n');
+
+  // Trigger download
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().substring(0, 10);
+  a.href = url;
+  a.download = `investiq-tracker-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  trackerStatus(`Exported ${data.snapshots.length} snapshots`, 'buy');
+}
+
+function trackerClearAll() {
+  const confirm1 = window.confirm('Delete ALL tracker data (watchlist + snapshots)? This cannot be undone. Make sure you have exported the CSV first.');
+  if (!confirm1) return;
+  const confirm2 = window.confirm('Last warning — type-confirm by clicking OK to permanently delete all tracker data.');
+  if (!confirm2) return;
+  localStorage.removeItem(TRACKER_KEY);
+  trackerStatus('All tracker data cleared', 'hold');
+  trackerRenderWatchlist();
+  trackerRenderSnapshots();
+  trackerRenderStats();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ═══════════════════ OPTION STUDY (Tab 10) ═════════════════════
+// ═══════════════════════════════════════════════════════════════
+//
+// Evaluate one specific option contract. Workflow:
+//   1. Type underlying → Load Chain → fetches real expiries + strikes
+//   2. Pick expiry, strike, type from dropdowns (only real contracts shown)
+//   3. Analyse → shows underlying direction analysis + premium analysis
+//
+// Phase 16 is ANALYSIS ONLY — no buy/sell/hold verdict. Facts laid out
+// clearly; the user makes the call.
+
+function loadOptionStudy() {
+  // Nothing to auto-load; the tab is interactive. Just ensure clean state.
+  const resultEl = document.getElementById('ostudy-result');
+  if (resultEl && !resultEl.innerHTML.trim()) {
+    resultEl.innerHTML = '<div class="empty" style="padding:40px;text-align:center;color:var(--ink-3)">Enter an underlying symbol and click "Load Chain" to begin.</div>';
+  }
+}
+
+function ostudyStatus(msg, kind) {
+  const el = document.getElementById('ostudy-selector-status');
+  if (!el) return;
+  const color = kind === 'sell' ? 'var(--sell)' : kind === 'buy' ? 'var(--buy)'
+              : kind === 'hold' ? 'var(--hold)' : 'var(--ink-3)';
+  el.style.color = color;
+  el.textContent = msg;
+}
+
+async function ostudyLoadChain() {
+  const symEl = document.getElementById('ostudy-symbol');
+  const sym = (symEl.value || '').trim().toUpperCase();
+  if (!sym) { ostudyStatus('Enter an underlying symbol first', 'hold'); return; }
+
+  const btn = document.getElementById('ostudy-loadchain-btn');
+  btn.disabled = true; btn.textContent = 'Loading...';
+  ostudyStatus(`Fetching option chain for ${sym}...`, 'hold');
+
+  try {
+    const res = await fetch('/api/option-study/chain/' + encodeURIComponent(sym));
+    const data = await res.json();
+    if (!data.ok) {
+      ostudyStatus('Could not load chain: ' + (data.error || 'unknown'), 'sell');
+      btn.disabled = false; btn.textContent = 'Load Chain';
+      return;
+    }
+    // Populate expiry dropdown
+    const expSel = document.getElementById('ostudy-expiry');
+    if (!data.expiries || data.expiries.length === 0) {
+      ostudyStatus('No expiries found for ' + sym, 'sell');
+      btn.disabled = false; btn.textContent = 'Load Chain';
+      return;
+    }
+    expSel.innerHTML = data.expiries.map(e =>
+      `<option value="${e.expiry}">${e.date} (${e.dte}d)</option>`
+    ).join('');
+    expSel.disabled = false;
+
+    // Populate strike dropdown — default-select strike nearest to spot
+    const strikeSel = document.getElementById('ostudy-strike');
+    const spot = data.spot;
+    strikeSel.innerHTML = data.strikes.map(s => {
+      const tag = spot ? (Math.abs(s - spot) < (data.strikes[1]-data.strikes[0] || 1) / 2 ? ' ◄ ATM' : '') : '';
+      return `<option value="${s}">${s}${tag}</option>`;
+    }).join('');
+    strikeSel.disabled = false;
+    // Select nearest-to-spot strike
+    if (spot) {
+      let nearest = data.strikes[0], minDiff = Infinity;
+      for (const s of data.strikes) {
+        const d = Math.abs(s - spot);
+        if (d < minDiff) { minDiff = d; nearest = s; }
+      }
+      strikeSel.value = nearest;
+    }
+
+    document.getElementById('ostudy-analyze-btn').disabled = false;
+    ostudyStatus(`Chain loaded. Spot ₹${spot != null ? spot.toFixed(2) : '—'} · ${data.expiries.length} expiries · ${data.strikes.length} strikes. Pick a contract and Analyse.`, 'buy');
+  } catch (e) {
+    ostudyStatus('Error: ' + e.message, 'sell');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Load Chain';
+  }
+}
+
+async function ostudyAnalyze() {
+  const sym = (document.getElementById('ostudy-symbol').value || '').trim().toUpperCase();
+  const expiry = document.getElementById('ostudy-expiry').value;
+  const strike = document.getElementById('ostudy-strike').value;
+  const type = document.getElementById('ostudy-type').value;
+  if (!sym || !expiry || !strike) { ostudyStatus('Pick all fields first', 'hold'); return; }
+
+  const btn = document.getElementById('ostudy-analyze-btn');
+  btn.disabled = true; btn.textContent = 'Analysing...';
+  ostudyStatus('Analysing contract — fetching premium + underlying...', 'hold');
+  const resultEl = document.getElementById('ostudy-result');
+  resultEl.innerHTML = '<div class="empty" style="padding:40px;text-align:center;color:var(--ink-3)">Analysing...</div>';
+
+  try {
+    const qs = `symbol=${encodeURIComponent(sym)}&strike=${strike}&type=${type}&expiry=${expiry}`;
+    const res = await fetch('/api/option-study/analyze?' + qs);
+    const data = await res.json();
+    if (!data.ok) {
+      resultEl.innerHTML = `<div class="empty" style="padding:40px;text-align:center;color:var(--sell)">${data.error || 'Analysis failed'}</div>`;
+      ostudyStatus('Analysis failed', 'sell');
+      return;
+    }
+    resultEl.innerHTML = renderOptionStudy(data);
+    ostudyStatus('Done.', 'buy');
+  } catch (e) {
+    resultEl.innerHTML = `<div class="empty" style="padding:40px;text-align:center;color:var(--sell)">Error: ${e.message}</div>`;
+    ostudyStatus('Error: ' + e.message, 'sell');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Analyse';
+  }
+}
+
+function renderOptionStudy(data) {
+  const c = data.contract;
+  const p = data.premiumAnalysis || {};
+  const u = data.underlying || {};
+  const fmtN = (v, d = 2) => (v == null || !Number.isFinite(v)) ? '—' : Number(v).toFixed(d);
+  const fmtPct = (v) => (v == null || !Number.isFinite(v)) ? '—' : (v > 0 ? '+' : '') + Number(v).toFixed(2) + '%';
+
+  // ── Hero ──
+  const hero = `
+    <div class="ostudy-hero">
+      <div>
+        <div class="ostudy-hero-title">${c.symbol} ${c.strike} ${c.type}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);margin-top:4px">
+          Expiry in ${c.dte} days · Spot ₹${fmtN(data.spot)} ·
+          <span class="ostudy-moneyness ${p.moneyness}">${p.moneyness}</span>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div class="ostudy-hero-premium">₹${fmtN(data.premium)}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-3)">premium / share</div>
+      </div>
+    </div>
+  `;
+
+  // ── Premium analysis card ──
+  const decayCells = p.decayProjection ? `
+    <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-top:12px;margin-bottom:4px">
+      THETA DECAY PROJECTION (if stock + IV stay flat)
+    </div>
+    <div class="ostudy-decay-bar">
+      <div class="ostudy-decay-cell"><div class="d-label">NOW</div><div class="d-value">₹${fmtN(data.premium)}</div></div>
+      <div class="ostudy-decay-cell"><div class="d-label">+1 DAY</div><div class="d-value">₹${fmtN(p.decayProjection.day1)}</div></div>
+      <div class="ostudy-decay-cell"><div class="d-label">+3 DAYS</div><div class="d-value">₹${fmtN(p.decayProjection.day3)}</div></div>
+      <div class="ostudy-decay-cell"><div class="d-label">+5 DAYS</div><div class="d-value">₹${fmtN(p.decayProjection.day5)}</div></div>
+      <div class="ostudy-decay-cell"><div class="d-label">EXPIRY</div><div class="d-value">₹${fmtN(p.decayProjection.atExpiry)}</div></div>
+    </div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-3);margin-top:6px;font-style:italic">
+      Linear theta estimate — real decay accelerates near expiry. At expiry only intrinsic value (₹${fmtN(p.intrinsic)}) remains.
+    </div>
+  ` : '';
+
+  const premiumCard = `
+    <div class="card">
+      <div class="card-title">Premium Analysis</div>
+      <div class="ostudy-metric-row"><span class="label">Implied Volatility (IV)</span><span class="value">${fmtN(p.iv, 1)}%</span></div>
+      <div class="ostudy-metric-row"><span class="label">India VIX (reference)</span><span class="value">${fmtN(p.indiaVix, 2)}</span></div>
+      <div class="ostudy-metric-row"><span class="label">Delta</span><span class="value">${fmtN(p.delta, 3)}</span></div>
+      <div class="ostudy-metric-row"><span class="label">Gamma</span><span class="value">${fmtN(p.gamma, 4)}</span></div>
+      <div class="ostudy-metric-row"><span class="label">Theta (₹/day)</span><span class="value" style="color:var(--sell)">${fmtN(p.theta, 2)}</span></div>
+      <div class="ostudy-metric-row"><span class="label">Vega</span><span class="value">${fmtN(p.vega, 2)}</span></div>
+      <div class="ostudy-metric-row"><span class="label">Daily decay (% of premium)</span><span class="value" style="color:var(--sell)">${fmtN(p.decayPctPerDay, 2)}%</span></div>
+      <div class="ostudy-metric-row"><span class="label">Intrinsic / Extrinsic</span><span class="value">₹${fmtN(p.intrinsic)} / ₹${fmtN(p.extrinsic)}</span></div>
+      <div class="ostudy-metric-row"><span class="label">Breakeven (stock price)</span><span class="value">₹${fmtN(p.breakeven)}</span></div>
+      <div class="ostudy-metric-row"><span class="label">Move needed to breakeven</span><span class="value">${fmtPct(p.breakevenMovePct)}</span></div>
+      <div class="ostudy-metric-row"><span class="label">Prob. of profit (at expiry)</span><span class="value">${fmtN(p.probabilityOfProfit, 1)}%</span></div>
+      <div class="ostudy-metric-row"><span class="label">Prob. touch breakeven</span><span class="value">${fmtN(p.probabilityTouchBreakeven, 1)}%</span></div>
+      <div class="ostudy-metric-row"><span class="label">Open Interest / Volume</span><span class="value">${p.oi != null ? p.oi.toLocaleString() : '—'} / ${p.volume != null ? p.volume.toLocaleString() : '—'}</span></div>
+      ${decayCells}
+    </div>
+  `;
+
+  // ── Underlying analysis card ──
+  let underlyingCard;
+  if (u.error) {
+    underlyingCard = `<div class="card"><div class="card-title">Underlying Direction</div><div style="color:var(--sell);font-family:'JetBrains Mono',monospace;font-size:11px">${u.error}</div></div>`;
+  } else {
+    const sigColor = (u.signal || '').includes('BUY') ? 'var(--buy)'
+                   : (u.signal || '').includes('SELL') ? 'var(--sell)' : 'var(--hold)';
+    const gateColor = u.gatingVerdict === 'PASS' ? 'var(--buy)' : 'var(--sell)';
+    underlyingCard = `
+      <div class="card">
+        <div class="card-title">Underlying Direction — ${c.symbol}</div>
+        <div class="ostudy-metric-row"><span class="label">Scanner signal</span><span class="value" style="color:${sigColor}">${u.signal || '—'}</span></div>
+        <div class="ostudy-metric-row"><span class="label">Signal confidence</span><span class="value">${fmtN(u.confidence, 0)}</span></div>
+        <div class="ostudy-metric-row"><span class="label">Confluence score / tier</span><span class="value">${fmtN(u.confluenceScore, 0)} · ${u.confluenceTier || '—'}</span></div>
+        <div class="ostudy-metric-row"><span class="label">Range state</span><span class="value">${u.rangeState || '—'}</span></div>
+        <div class="ostudy-metric-row"><span class="label">Volume character</span><span class="value">${u.volumeCharacter || '—'}</span></div>
+        <div class="ostudy-metric-row"><span class="label">Resistance cluster</span><span class="value">${u.resistanceClusterCount != null ? u.resistanceClusterCount + ' levels' : '—'}</span></div>
+        <div class="ostudy-metric-row"><span class="label">RSI / Trend score</span><span class="value">${fmtN(u.rsi, 0)} / ${u.trendScore != null ? u.trendScore + '/8' : '—'}</span></div>
+        <div class="ostudy-metric-row"><span class="label">Underlying invalidation</span><span class="value">${u.invalidation != null ? '₹' + fmtN(u.invalidation) : '—'}</span></div>
+        <div class="ostudy-metric-row"><span class="label">Cross-engine gating (option)</span><span class="value" style="color:${gateColor}">${u.gatingVerdict || '—'}</span></div>
+        ${u.gatingFailures && u.gatingFailures.length ? `
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-3);margin-top:8px;line-height:1.6">
+            ${u.gatingFailures.map(f => '• ' + f).join('<br>')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  // ── Honest framing note ──
+  const note = `
+    <div style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-top:16px;padding:12px 14px;background:rgba(255,255,255,.02);border-radius:4px;line-height:1.7">
+      <strong style="color:var(--accent)">Reading this:</strong> The left panel is the option's own math — IV, Greeks, how fast premium decays, what stock price you need to break even. The right panel is the underlying stock's direction analysis (same engines as Scanner / Stock Search).<br>
+      <strong style="color:var(--hold)">For a BUY to work:</strong> the stock must move in your favour <em>faster than theta erodes the premium</em>, and reach beyond the breakeven (₹${fmtN(p.breakeven)}) before expiry.<br>
+      <strong style="color:var(--ink-2)">No verdict shown:</strong> This is analysis only. A buy/sell/hold verdict will be added after the 15-day tracker test validates the scoring. For now — the facts are here, the decision is yours.
+    </div>
+  `;
+
+  return `
+    <div class="card" style="margin-bottom:16px">${hero}</div>
+    <div class="ostudy-grid">
+      ${premiumCard}
+      ${underlyingCard}
+    </div>
+    ${note}
+  `;
+}
 
 </script>
 </body>
