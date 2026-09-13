@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InvestIQ — Paper Trade</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c232d; --border:#262d38;
+    --text:#e6edf3; --dim:#8b949e; --green:#3fb950; --red:#f85149;
+    --amber:#d29922; --accent:#58a6ff;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+       font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%}
+  .wrap{max-width:1000px;margin:0 auto;padding:20px 16px 60px}
+  h1{font-size:20px;margin:0;letter-spacing:.2px}
+  h1 span{color:var(--dim);font-weight:400}
+  .sub{color:var(--dim);font-size:13px;margin:6px 0 20px}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .green{color:var(--green)} .red{color:var(--red)} .amber{color:var(--amber)}
+  .dim{color:var(--dim)}
+
+  nav{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:20px}
+  nav button{background:none;border:none;color:var(--dim);padding:10px 14px;font-size:14px;
+    cursor:pointer;border-bottom:2px solid transparent;font-family:var(--sans)}
+  nav button:hover{color:var(--text)}
+  nav button[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+  nav button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:16px}
+  label{display:block;font-size:12px;color:var(--dim);margin:0 0 4px}
+  .req label::after{content:" *";color:var(--amber)}
+  input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--border);
+    color:var(--text);border-radius:6px;padding:8px 10px;font-size:14px;font-family:var(--sans)}
+  input.num,select.num{font-family:var(--mono)}
+  textarea{resize:vertical;min-height:64px}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .field{margin-bottom:12px}
+  .hint{font-size:11px;color:var(--dim);margin-top:3px}
+  .btn{background:var(--accent);color:#06121f;border:none;border-radius:6px;padding:9px 16px;
+    font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans)}
+  .btn:hover{filter:brightness(1.08)} .btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .btn.ghost{background:transparent;border:1px solid var(--border);color:var(--text);font-weight:500}
+  .btn.sm{padding:5px 10px;font-size:12px}
+  .btn.danger{background:transparent;border:1px solid var(--red);color:var(--red)}
+  .row-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+  .note{background:rgba(210,153,34,.09);border:1px solid rgba(210,153,34,.35);border-radius:6px;
+    padding:10px 12px;font-size:12.5px;color:#e8d9b0;margin:12px 0}
+  .note b{color:var(--amber)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--dim);font-weight:500;font-size:11px;letter-spacing:.3px}
+  td.num,th.num{text-align:right}
+  .tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:4px;border:1px solid var(--border);color:var(--dim)}
+  .tag.pass{color:var(--green);border-color:rgba(63,185,80,.4)}
+  .tag.fail{color:var(--red);border-color:rgba(248,81,73,.4)}
+  .tag.follow{color:var(--accent);border-color:rgba(88,166,255,.4)}
+  .tag.override{color:var(--amber);border-color:rgba(210,153,34,.4)}
+  .empty{text-align:center;color:var(--dim);padding:34px 16px;font-size:14px}
+  .empty b{color:var(--text);display:block;margin-bottom:6px;font-size:15px}
+
+  .stat{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .stat .box{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px}
+  .stat .v{font-family:var(--mono);font-size:22px}
+  .stat .k{font-size:11px;color:var(--dim);margin-top:2px}
+  .seg{margin-bottom:8px}
+  .seg .bar{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden;margin-top:4px}
+  .seg .bar > i{display:block;height:100%;background:var(--green)}
+  @media(max-width:600px){
+    .grid,.grid3{grid-template-columns:1fr}
+    .stat{grid-template-columns:repeat(2,1fr)}
+    .wrap{padding:14px 12px 50px}
+    table{font-size:12px} th,td{padding:6px 6px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Paper Trade <span>/ InvestIQ</span></h1>
+  <div class="sub">Practice picking from the tool with no money at risk. The point isn't to win — it's to find out whether following the tool's read helps you, and to feel the gap between "stock moved my way" and "the option still lost."</div>
+
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="log">Log a trade</button>
+    <button role="tab" aria-selected="false" data-tab="open">Open <span id="openCount" class="dim"></span></button>
+    <button role="tab" aria-selected="false" data-tab="review">Review</button>
+  </nav>
+
+  <!-- LOG -->
+  <section id="tab-log">
+    <div class="panel">
+      <div class="grid">
+        <div class="field req"><label>Symbol</label><input id="f_symbol" placeholder="e.g. VEDL" autocomplete="off"></div>
+        <div class="field req"><label>Your direction</label>
+          <select id="f_dir"><option value="LONG">LONG — expect it to rise (you'd buy CE)</option>
+          <option value="SHORT">SHORT — expect it to fall (you'd buy PE)</option></select></div>
+      </div>
+      <div class="grid3">
+        <div class="field"><label>Tool's signal</label>
+          <select id="f_sig"><option>STRONG BUY</option><option>BUY</option><option>HOLD</option><option>SELL</option><option>STRONG SELL</option></select></div>
+        <div class="field"><label>Gate</label>
+          <select id="f_gate"><option>PASS</option><option>FAIL</option></select></div>
+        <div class="field"><label>BuyScore</label><input id="f_bs" class="num" inputmode="numeric" placeholder="0–100"></div>
+      </div>
+      <div class="grid3">
+        <div class="field"><label>POT % (tool's touch odds)</label><input id="f_pot" class="num" inputmode="decimal" placeholder="e.g. 27.5"></div>
+        <div class="field req"><label>Entry stock price ₹</label><input id="f_entry" class="num" inputmode="decimal" placeholder="e.g. 274.90"></div>
+        <div class="field"><label>Target stock price ₹</label><input id="f_tgt" class="num" inputmode="decimal" placeholder="optional"></div>
+      </div>
+      <div class="grid3">
+        <div class="field"><label>Invalidation / stop ₹</label><input id="f_inv" class="num" inputmode="decimal" placeholder="optional"></div>
+        <div class="field"><label>Option contract</label><input id="f_opt" placeholder="optional, e.g. VEDL AUG 280 CE"></div>
+        <div class="field"><label>Entry premium ₹ (from broker)</label><input id="f_prem" class="num" inputmode="decimal" placeholder="optional"></div>
+      </div>
+      <div class="field req"><label>Why this trade? (your thesis, in one or two lines)</label>
+        <textarea id="f_thesis" placeholder="What do you see, and what would prove you wrong? You can't log without this — the thesis is the thing you're actually testing."></textarea>
+        <div class="hint">Write the reason before you know the outcome. On review you'll see whether your reasons, not your luck, were right.</div>
+      </div>
+      <div id="agreeMsg" class="hint"></div>
+      <div class="note"><b>Before you save:</b> if POT is low, the tool is telling you the target probably won't even be touched. Logging anyway is fine — just notice you're overriding its own odds.</div>
+      <div class="row-actions"><button class="btn" id="saveBtn">Log paper trade</button></div>
+      <div id="logErr" class="hint" style="color:var(--red);margin-top:8px"></div>
+    </div>
+  </section>
+
+  <!-- OPEN -->
+  <section id="tab-open" hidden>
+    <div class="panel">
+      <div id="openWrap"></div>
+    </div>
+  </section>
+
+  <!-- REVIEW -->
+  <section id="tab-review" hidden>
+    <div id="reviewWrap"></div>
+  </section>
+
+  <div class="row-actions" style="margin-top:8px">
+    <button class="btn ghost sm" id="exportBtn">Export CSV</button>
+    <button class="btn ghost sm" id="clearBtn">Reset all paper trades</button>
+  </div>
+  <div class="sub" style="margin-top:14px">Saved on this device only (same as your tracker). Export the CSV from each device you use.</div>
+</div>
+
+<!-- Close modal -->
+<div id="closeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:16px;z-index:10">
+  <div class="panel" style="max-width:420px;width:100%;margin:0">
+    <h1 style="font-size:16px" id="closeTitle">Close trade</h1>
+    <div class="sub" style="margin:8px 0 14px">Enter what actually happened by your review point.</div>
+    <div class="field req"><label>Exit stock price ₹</label><input id="c_exit" class="num" inputmode="decimal"></div>
+    <div class="field"><label>Exit premium ₹ (if you tracked the option)</label><input id="c_prem" class="num" inputmode="decimal"></div>
+    <div class="field"><label>What did you learn?</label><textarea id="c_note" placeholder="Was your thesis right? Did the tool help or mislead?"></textarea></div>
+    <div class="row-actions"><button class="btn" id="confirmClose">Save outcome</button><button class="btn ghost" id="cancelClose">Cancel</button></div>
+  </div>
+</div>
+
+<script>
+const KEY="investiq_paper_trades_v1";
+const $=id=>document.getElementById(id);
+const load=()=>{try{return JSON.parse(localStorage.getItem(KEY))||[]}catch{return[]}};
+const save=a=>localStorage.setItem(KEY,JSON.stringify(a));
+let trades=load();
+let pendingClose=null;
+
+// Does the chosen direction agree with the tool's signal?
+function follows(dir,sig){
+  const bull=["STRONG BUY","BUY"], bear=["SELL","STRONG SELL"];
+  if(dir==="LONG"&&bull.includes(sig)) return true;
+  if(dir==="SHORT"&&bear.includes(sig)) return true;
+  return false; // HOLD, or direction contradicts signal
+}
+function agreeText(){
+  const dir=$("f_dir").value, sig=$("f_sig").value;
+  const f=follows(dir,sig);
+  $("agreeMsg").innerHTML = f
+    ? '<span class="tag follow">following the tool</span> your direction agrees with its signal.'
+    : '<span class="tag override">overriding the tool</span> your direction differs from its signal — worth noticing.';
+}
+["f_dir","f_sig"].forEach(id=>$(id).addEventListener("change",agreeText));
+agreeText();
+
+// Tabs
+document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.setAttribute('aria-selected','false'));
+  b.setAttribute('aria-selected','true');
+  ['log','open','review'].forEach(t=>$('tab-'+t).hidden=(t!==b.dataset.tab));
+  if(b.dataset.tab==='open') renderOpen();
+  if(b.dataset.tab==='review') renderReview();
+}));
+
+// Save trade
+$("saveBtn").addEventListener("click",()=>{
+  const t={
+    id:Date.now(), createdAt:new Date().toISOString(),
+    symbol:$("f_symbol").value.trim().toUpperCase(),
+    dir:$("f_dir").value, sig:$("f_sig").value, gate:$("f_gate").value,
+    bs:$("f_bs").value.trim(), pot:$("f_pot").value.trim(),
+    entry:parseFloat($("f_entry").value), tgt:$("f_tgt").value.trim(),
+    inv:$("f_inv").value.trim(), opt:$("f_opt").value.trim(),
+    prem:$("f_prem").value.trim(), thesis:$("f_thesis").value.trim(),
+    followed:follows($("f_dir").value,$("f_sig").value),
+    status:"OPEN"
+  };
+  const err=[];
+  if(!t.symbol) err.push("symbol");
+  if(isNaN(t.entry)) err.push("entry stock price");
+  if(!t.thesis) err.push("thesis");
+  if(err.length){$("logErr").textContent="Add: "+err.join(", ")+".";return;}
+  $("logErr").textContent="";
+  trades.push(t); save(trades);
+  ["f_symbol","f_bs","f_pot","f_entry","f_tgt","f_inv","f_opt","f_prem","f_thesis"].forEach(id=>$(id).value="");
+  document.querySelector('nav button[data-tab="open"]').click();
+});
+
+function fmt(n,d=2){return isNaN(n)?"—":Number(n).toFixed(d);}
+function updateCount(){const o=trades.filter(t=>t.status==="OPEN").length;$("openCount").textContent=o?("· "+o):"";}
+
+// OPEN list
+function renderOpen(){
+  updateCount();
+  const open=trades.filter(t=>t.status==="OPEN");
+  if(!open.length){$("openWrap").innerHTML='<div class="empty"><b>No open paper trades</b>Log one from the first tab. Pick a name off the tool, write why, and come back in a day or two to see what happened.</div>';return;}
+  let h='<table><thead><tr><th>Symbol</th><th>Dir</th><th>Tool</th><th class="num">Entry ₹</th><th>Thesis</th><th></th></tr></thead><tbody>';
+  open.forEach(t=>{
+    h+=`<tr><td><b>${t.symbol}</b><div class="dim">${new Date(t.createdAt).toLocaleDateString()}</div></td>
+    <td>${t.dir}</td>
+    <td><span class="tag ${t.gate==='PASS'?'pass':'fail'}">${t.sig} · ${t.gate}</span>
+        <div><span class="tag ${t.followed?'follow':'override'}">${t.followed?'followed':'override'}</span></div></td>
+    <td class="num">${fmt(t.entry)}${t.opt?`<div class="dim">${t.opt} @${t.prem||'—'}</div>`:''}</td>
+    <td style="max-width:260px">${t.thesis}</td>
+    <td><button class="btn sm" data-close="${t.id}">Close</button></td></tr>`;
+  });
+  h+='</tbody></table>';
+  $("openWrap").innerHTML=h;
+  document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>openClose(+b.dataset.close)));
+}
+
+// Close flow
+function openClose(id){
+  pendingClose=id; const t=trades.find(x=>x.id===id);
+  $("closeTitle").textContent="Close "+t.symbol;
+  $("c_exit").value="";$("c_prem").value="";$("c_note").value="";
+  $("closeModal").style.display="flex";$("c_exit").focus();
+}
+$("cancelClose").addEventListener("click",()=>{$("closeModal").style.display="none";pendingClose=null;});
+$("confirmClose").addEventListener("click",()=>{
+  const t=trades.find(x=>x.id===pendingClose); if(!t)return;
+  const exit=parseFloat($("c_exit").value);
+  if(isNaN(exit)){$("c_exit").focus();return;}
+  t.exit=exit; t.exitPrem=$("c_prem").value.trim(); t.reviewNote=$("c_note").value.trim();
+  t.closedAt=new Date().toISOString(); t.status="CLOSED";
+  // stock move signed by direction
+  const raw=(exit-t.entry)/t.entry*100;
+  t.stockMove=+(t.dir==="LONG"?raw:-raw).toFixed(3);
+  t.win=t.stockMove>0;
+  // option P&L (buyer) if premiums present
+  if(t.prem && t.exitPrem){t.optPnl=+(((parseFloat(t.exitPrem)-parseFloat(t.prem))/parseFloat(t.prem))*100).toFixed(1);}
+  else t.optPnl=null;
+  save(trades);
+  $("closeModal").style.display="none";pendingClose=null;
+  document.querySelector('nav button[data-tab="review"]').click();
+});
+
+// REVIEW
+function renderReview(){
+  const c=trades.filter(t=>t.status==="CLOSED");
+  if(!c.length){$("reviewWrap").innerHTML='<div class="panel"><div class="empty"><b>Nothing to review yet</b>Close a few paper trades and this becomes the useful screen — it tells you whether following the tool actually helped you.</div></div>';return;}
+  const wins=c.filter(t=>t.win).length;
+  const wr=(wins/c.length*100);
+  const avg=c.reduce((s,t)=>s+t.stockMove,0)/c.length;
+  const trap=c.filter(t=>t.win&&t.optPnl!==null&&t.optPnl<0).length;
+  // segments
+  const seg=(arr)=>arr.length?`${(arr.filter(t=>t.win).length/arr.length*100).toFixed(0)}% <span class="dim">(${arr.filter(t=>t.win).length}/${arr.length})</span>`:'<span class="dim">—</span>';
+  const segPct=(arr)=>arr.length?arr.filter(t=>t.win).length/arr.length*100:0;
+  const foll=c.filter(t=>t.followed), over=c.filter(t=>!t.followed);
+  const gp=c.filter(t=>t.gate==="PASS"), gf=c.filter(t=>t.gate==="FAIL");
+
+  let h=`<div class="stat">
+    <div class="box"><div class="v ${wr>=50?'green':'red'}">${wr.toFixed(0)}%</div><div class="k">directional win rate</div></div>
+    <div class="box"><div class="v ${avg>=0?'green':'red'}">${avg>=0?'+':''}${avg.toFixed(2)}%</div><div class="k">avg stock move (your way)</div></div>
+    <div class="box"><div class="v">${c.length}</div><div class="k">closed trades</div></div>
+    <div class="box"><div class="v ${trap?'amber':''}">${trap}</div><div class="k">stock right, option lost</div></div>
+  </div>`;
+
+  h+=`<div class="panel"><b>Did following the tool help?</b>
+    <div class="sub" style="margin:6px 0 14px">This is the whole reason to paper trade. If "followed" doesn't beat "override", the tool isn't earning your trust yet.</div>
+    <div class="seg"><span class="tag follow">followed the tool</span> &nbsp;${seg(foll)}<div class="bar"><i style="width:${segPct(foll)}%"></i></div></div>
+    <div class="seg"><span class="tag override">overrode the tool</span> &nbsp;${seg(over)}<div class="bar"><i style="width:${segPct(over)}%"></i></div></div>
+    <div class="seg" style="margin-top:12px"><span class="tag pass">gate PASS</span> &nbsp;${seg(gp)}<div class="bar"><i style="width:${segPct(gp)}%"></i></div></div>
+    <div class="seg"><span class="tag fail">gate FAIL</span> &nbsp;${seg(gf)}<div class="bar"><i style="width:${segPct(gf)}%"></i></div></div>
+  </div>`;
+
+  if(trap){h+=`<div class="note"><b>The theta lesson, ${trap}×:</b> the stock moved your way but the option still lost money. Being right on direction isn't enough when you're buying premium — the move has to be big and fast. This is the single most expensive habit to unlearn.</div>`;}
+
+  h+='<div class="panel"><b>All closed trades</b><table style="margin-top:10px"><thead><tr><th>Symbol</th><th>Tool</th><th class="num">Stock</th><th class="num">Option</th><th>Thesis → learning</th></tr></thead><tbody>';
+  c.slice().reverse().forEach(t=>{
+    h+=`<tr><td><b>${t.symbol}</b> <span class="dim">${t.dir}</span></td>
+    <td><span class="tag ${t.followed?'follow':'override'}">${t.followed?'followed':'override'}</span></td>
+    <td class="num ${t.win?'green':'red'}">${t.stockMove>=0?'+':''}${t.stockMove}%</td>
+    <td class="num ${t.optPnl===null?'dim':(t.optPnl>=0?'green':'red')}">${t.optPnl===null?'—':(t.optPnl>=0?'+':'')+t.optPnl+'%'}</td>
+    <td style="max-width:300px"><div>${t.thesis}</div>${t.reviewNote?`<div class="dim" style="margin-top:3px">↳ ${t.reviewNote}</div>`:''}</td></tr>`;
+  });
+  h+='</tbody></table></div>';
+  $("reviewWrap").innerHTML=h;
+}
+
+// Export / reset
+$("exportBtn").addEventListener("click",()=>{
+  if(!trades.length)return;
+  const cols=["id","createdAt","closedAt","symbol","dir","sig","gate","followed","bs","pot","entry","tgt","inv","opt","prem","exit","exitPrem","stockMove","optPnl","win","thesis","reviewNote","status"];
+  const esc=v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"';
+  const csv=[cols.join(",")].concat(trades.map(t=>cols.map(k=>esc(t[k])).join(","))).join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download="investiq-paper-trades-"+new Date().toISOString().slice(0,10)+".csv";a.click();
+});
+$("clearBtn").addEventListener("click",()=>{
+  if(confirm("Delete all paper trades on this device? This can't be undone."))
+  {trades=[];save(trades);updateCount();renderOpen();renderReview();}
+});
+
+updateCount();
+</script>
+</body>
+</html>
