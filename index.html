@@ -2,12 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<meta name="theme-color" content="#0d1117" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="InvestIQ" />
-<link rel="manifest" href="/manifest.json" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>InvestIQ Pro — Markets Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -634,112 +629,6 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   letter-spacing: 0.04em;
 }
 
-/* Option Study tab */
-.ostudy-selector {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: flex-end;
-}
-.ostudy-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.ostudy-field label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--ink-3);
-  text-transform: uppercase;
-}
-.ostudy-field input,
-.ostudy-field select {
-  background: var(--bg-3);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 8px 10px;
-  color: var(--ink-1);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  min-width: 130px;
-}
-.ostudy-field select:disabled { opacity: 0.4; }
-.ostudy-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  align-items: start;
-}
-@media (max-width: 900px) {
-  .ostudy-grid { grid-template-columns: 1fr; }
-}
-.ostudy-metric-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 7px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.03);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-}
-.ostudy-metric-row .label { color: var(--ink-3); }
-.ostudy-metric-row .value { color: var(--ink-1); font-weight: 600; }
-.ostudy-hero {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.ostudy-hero-title {
-  font-family: 'Cormorant Garamond', serif;
-  font-size: 26px;
-  color: var(--ink-1);
-  font-weight: 600;
-}
-.ostudy-hero-premium {
-  font-family: 'Cormorant Garamond', serif;
-  font-size: 32px;
-  font-weight: 700;
-  color: var(--accent);
-}
-.ostudy-decay-bar {
-  display: flex;
-  gap: 4px;
-  margin-top: 8px;
-}
-.ostudy-decay-cell {
-  flex: 1;
-  text-align: center;
-  padding: 8px 4px;
-  background: var(--bg-3);
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', monospace;
-}
-.ostudy-decay-cell .d-label {
-  font-size: 9px;
-  color: var(--ink-3);
-  letter-spacing: 0.06em;
-}
-.ostudy-decay-cell .d-value {
-  font-size: 13px;
-  color: var(--ink-1);
-  font-weight: 600;
-  margin-top: 2px;
-}
-.ostudy-moneyness {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 3px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
-.ostudy-moneyness.ITM { background: rgba(78,206,121,0.18); color: var(--buy); }
-.ostudy-moneyness.OTM { background: rgba(255,107,107,0.15); color: var(--sell); }
-.ostudy-moneyness.ATM { background: rgba(255,184,0,0.15); color: var(--hold); }
-
 /* Tracker tab */
 .tracker-grid {
   display: grid;
@@ -915,216 +804,6 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 8px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* ═══════════════════════════════════════════════════════════════════
-   MOBILE RESPONSIVE — phones ≤ 600px wide
-   Applied OVER existing @media rules to fix the actual usability gaps
-   identified for in-day phone use of Stock Search / Option Study /
-   Scanner / Tracker tabs.
-   Principles:
-     - Touch targets ≥ 44px (Apple HIG)
-     - Body text ≥ 12px; warnings ≥ 13px
-     - Single column for everything
-     - Search input + tab nav both sticky for thumb reach
-   ═══════════════════════════════════════════════════════════════════ */
-@media (max-width: 600px) {
-  /* Respect notch on iPhone */
-  body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
-  header {
-    padding: 10px 14px;
-    gap: 12px;
-    flex-wrap: wrap;
-    padding-top: max(10px, env(safe-area-inset-top));
-  }
-  .brand { font-size: 18px; }
-  .brand .pro { display: none; } /* Save space */
-  .market-pulse { font-size: 11px; gap: 10px; margin-left: auto; }
-  .auth-btn { padding: 8px 12px; font-size: 11px; }
-
-  /* Tabs — bigger, thumb-friendly. Sticky to top so always reachable */
-  nav.tabs {
-    padding: 0 8px;
-    overflow-x: auto;
-    white-space: nowrap;
-    position: sticky; top: 0; z-index: 90;
-    -webkit-overflow-scrolling: touch;
-    background: var(--bg-2);
-  }
-  .tab {
-    padding: 14px 14px;
-    font-size: 11px;
-    min-height: 48px;
-    letter-spacing: 0.06em;
-  }
-  .tab-num { display: none; } /* Save horizontal space */
-
-  /* Main content gets thinner padding */
-  main { padding: 12px 12px 80px 12px; } /* extra bottom padding for safe scroll */
-
-  /* Panel headers — drop subtitle to next line, smaller title */
-  .panel-header {
-    flex-direction: column;
-    align-items: flex-start !important;
-    gap: 6px;
-  }
-  .panel-title { font-size: 20px !important; }
-  .panel-sub { font-size: 11px; line-height: 1.5; }
-  .panel-actions { width: 100%; flex-wrap: wrap; gap: 8px; }
-  .panel-actions .btn {
-    min-height: 44px; padding: 10px 16px;
-    font-size: 12px;
-  }
-
-  /* Stock Search — the priority tab */
-  .search-wrap { position: sticky; top: 56px; z-index: 80; background: var(--bg); padding: 8px 0; margin: -8px 0 8px; }
-  .search-input {
-    font-size: 16px !important; /* Stop iOS from zooming on focus */
-    padding: 14px 16px !important;
-    min-height: 50px;
-  }
-  .search-results { max-height: 50vh; overflow-y: auto; }
-  .search-row { padding: 14px 16px; min-height: 48px; font-size: 14px; }
-
-  /* Stock hero — vertical, price prominent */
-  .stock-hero {
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 8px !important;
-    padding: 16px !important;
-  }
-  .stock-symbol { font-size: 22px !important; }
-  .stock-price { font-size: 32px !important; line-height: 1 !important; }
-  .stock-change { font-size: 14px !important; }
-  .signal-large { font-size: 13px !important; padding: 8px 14px !important; align-self: flex-start; }
-
-  /* Signal Quality cards — stack with bigger fonts */
-  .sq-grid { grid-template-columns: 1fr !important; gap: 10px; }
-  .sq-card { padding: 14px; }
-  .sq-card-title { font-size: 11px; margin-bottom: 8px; }
-  .sq-card-value { font-size: 22px; }
-  .sq-card-label { font-size: 12px; }
-  .sq-card-sub { font-size: 12px; line-height: 1.55; }
-  .sq-card-adj { font-size: 12px; }
-
-  /* The BUY OVERRIDE banner — keep prominent on mobile */
-  .sq-block-banner { padding: 14px 16px; margin: 12px 0; }
-  .sq-block-title { font-size: 12px; }
-  .sq-block-body { font-size: 13px; line-height: 1.6; }
-
-  /* Cross-engine gating banner */
-  .sq-gating-banner { padding: 12px 14px; margin: 12px 0; }
-  .sq-gating-title { font-size: 12px; }
-  .sq-gating-sub { font-size: 12px; }
-
-  /* Confluence panel — wrap header, bigger score */
-  .confluence-header { flex-direction: column !important; gap: 8px !important; align-items: flex-start !important; }
-  .confluence-num { font-size: 42px !important; }
-  .confluence-tier { font-size: 13px !important; }
-  .confluence-title { font-size: 12px !important; }
-  .confluence-sub { font-size: 11px !important; }
-  .confluence-row { padding: 10px 0 !important; }
-  .confluence-bar { height: 6px !important; }
-  .confluence-component-name { font-size: 11px !important; }
-  .confluence-component-score { font-size: 13px !important; min-width: 36px !important; }
-  .confluence-component-reason { font-size: 11px !important; line-height: 1.5 !important; }
-
-  /* Generic grid → all columns full-width on phone */
-  .grid.grid-12 { gap: 12px !important; }
-  .col-2, .col-3, .col-4, .col-6, .col-8, .col-10, .col-12 { grid-column: span 12 !important; }
-  .card { padding: 14px !important; }
-
-  /* Metric grid (Technical Snapshot) — single column on phone */
-  .metric-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
-  .metric { padding: 10px !important; }
-  .metric-name { font-size: 10px !important; }
-  .metric-val { font-size: 16px !important; }
-
-  /* Target rows — bigger tap surface */
-  .target-row { padding: 10px 0 !important; min-height: 36px; }
-  .target-row .label { font-size: 11px; }
-  .target-row .val { font-size: 14px; }
-
-  /* Timeframe D/W/M toggle — touchable */
-  .tf-toggle { gap: 4px; }
-  .tf-btn {
-    min-width: 44px; min-height: 44px;
-    padding: 10px 12px !important;
-    font-size: 12px !important;
-  }
-
-  /* Chart height — sensible on mobile */
-  #chart { height: 320px !important; }
-
-  /* Buttons everywhere — touchable */
-  .btn, .btn-primary {
-    min-height: 44px; padding: 10px 18px;
-    font-size: 12px;
-  }
-
-  /* Bias reasons */
-  .bias-reasons { gap: 8px; }
-  .bias-reason { font-size: 12px; padding: 8px 12px; line-height: 1.5; }
-
-  /* Scanner table — make it a horizontally scrollable strip with sticky symbol col */
-  .scanner-table { font-size: 11px; }
-  .scanner-table thead { display: none; } /* Hide header, use card-like rows */
-  .scanner-table tbody tr {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 12px;
-    padding: 12px 10px;
-    border-bottom: 1px solid var(--line);
-  }
-  .scanner-table tbody td {
-    padding: 2px 0 !important;
-    border: none !important;
-    font-size: 12px;
-  }
-  /* First two cells (symbol + signal) take the top row spanning */
-  .scanner-table tbody td:nth-child(1) { grid-column: 1; font-weight: 600; font-size: 14px; }
-  .scanner-table tbody td:nth-child(2) { grid-column: 2; text-align: right; }
-  /* Rest flow in the grid */
-
-  /* Tracker tab */
-  .tracker-grid { grid-template-columns: 1fr !important; }
-  .tracker-snapshot-row { font-size: 12px; }
-
-  /* Catch-all: ANY input on mobile must be ≥16px to prevent iOS focus-zoom.
-     This deliberately overrides inline styles that set smaller sizes on
-     tracker / strategy / option-study inputs. */
-  input[type="text"], input[type="number"], input[type="search"],
-  input[type="email"], input[type="tel"], textarea, select {
-    font-size: 16px !important;
-    min-height: 44px;
-  }
-
-  /* Option Study */
-  .ostudy-grid { grid-template-columns: 1fr !important; gap: 12px; }
-  .ostudy-selector { gap: 10px; }
-  .ostudy-field { width: 100%; }
-  .ostudy-field input, .ostudy-field select {
-    width: 100%; min-height: 44px;
-    font-size: 14px;
-  }
-  .ostudy-hero { flex-direction: column; align-items: flex-start; }
-  .ostudy-hero-title { font-size: 20px !important; }
-  .ostudy-hero-premium { font-size: 26px !important; }
-  .ostudy-metric-row { padding: 9px 0 !important; font-size: 13px !important; }
-  .ostudy-metric-row .label { font-size: 12px; }
-  .ostudy-decay-bar { flex-wrap: wrap; gap: 4px; }
-  .ostudy-decay-cell { padding: 8px 4px; min-width: 60px; flex: 1 1 60px; }
-  .ostudy-decay-cell .d-label { font-size: 9px; }
-  .ostudy-decay-cell .d-value { font-size: 12px; }
-}
-
-/* Slightly larger phones (601-768px) — gentler version of the above */
-@media (min-width: 601px) and (max-width: 768px) {
-  main { padding: 16px; }
-  .sq-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .metric-grid { grid-template-columns: 1fr 1fr 1fr; }
-  .tab-num { display: none; }
-  #chart { height: 360px !important; }
-}
 </style>
 </head>
 <body>
@@ -1170,7 +849,7 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
   <button class="tab" data-tab="backtest"><span class="tab-num">07</span>Backtest</button>
   <button class="tab" data-tab="intraday"><span class="tab-num">08</span>Intraday</button>
   <button class="tab" data-tab="tracker"><span class="tab-num">09</span>Tracker</button>
-  <button class="tab" data-tab="optstudy"><span class="tab-num">10</span>Option Study</button>
+  <button class="tab" data-tab="paper"><span class="tab-num">10</span>Paper Trade</button>
 </nav>
 
 <main>
@@ -1497,49 +1176,94 @@ main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
     <strong style="color:var(--hold)">Auto-snapshot:</strong> When you open this tab during market hours (9:15-10:00 AM or 15:00-15:45 PM), the app auto-captures if you haven't already taken today's snapshot for that session. Manual button always works.<br>
     <strong style="color:var(--ink-2)">Storage:</strong> All data lives in this browser's localStorage. Clearing browser data deletes it. Download CSV regularly to keep a backup.
   </div>
-</section>
 
-<!-- ════════════════ TAB 10 — OPTION STUDY ════════════════ -->
-<section class="panel" id="panel-optstudy">
+<!-- ===== PAPER TRADE PANEL (added) ===== -->
+<section class="panel" id="panel-paper">
+  <style>
+    #panel-paper .pt-sub{display:flex;gap:4px;border-bottom:1px solid rgba(255,255,255,.08);margin:14px 0 18px}
+    #panel-paper .pt-sub button{background:none;border:none;color:var(--ink-2);padding:9px 14px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;font-family:inherit}
+    #panel-paper .pt-sub button.on{color:var(--ink);border-bottom-color:var(--accent)}
+    #panel-paper .pt-card{background:var(--bg-2);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:16px;margin-bottom:14px}
+    #panel-paper .pt-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    #panel-paper .pt-f{margin-bottom:10px}
+    #panel-paper label{display:block;font-size:11px;color:var(--ink-2);margin-bottom:4px}
+    #panel-paper .pt-req label::after{content:" *";color:var(--gold)}
+    #panel-paper input,#panel-paper select,#panel-paper textarea{width:100%;background:var(--bg-3);border:1px solid rgba(255,255,255,.08);color:var(--ink);border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box}
+    #panel-paper textarea{min-height:58px;resize:vertical}
+    #panel-paper .pt-mono{font-family:'JetBrains Mono',monospace}
+    #panel-paper .pt-note{background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.3);border-radius:6px;padding:9px 12px;font-size:12px;color:#e8d9b0;margin:10px 0}
+    #panel-paper .pt-hint{font-size:11px;color:var(--ink-3);margin-top:4px}
+    #panel-paper table{width:100%;border-collapse:collapse;font-size:12.5px}
+    #panel-paper th,#panel-paper td{text-align:left;padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
+    #panel-paper th{color:var(--ink-3);font-size:10.5px;font-weight:500;letter-spacing:.3px}
+    #panel-paper td.r,#panel-paper th.r{text-align:right}
+    #panel-paper .pt-tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.14);color:var(--ink-2)}
+    #panel-paper .pt-tag.f{color:var(--accent);border-color:rgba(74,158,255,.4)}
+    #panel-paper .pt-tag.o{color:var(--gold);border-color:rgba(212,175,55,.4)}
+    #panel-paper .pt-tag.p{color:var(--buy);border-color:rgba(0,200,150,.4)}
+    #panel-paper .pt-tag.x{color:var(--sell);border-color:rgba(255,77,109,.4)}
+    #panel-paper .pt-stat{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+    #panel-paper .pt-box{background:var(--bg-2);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:13px}
+    #panel-paper .pt-box .v{font-family:'JetBrains Mono',monospace;font-size:20px}
+    #panel-paper .pt-box .k{font-size:10.5px;color:var(--ink-3);margin-top:2px}
+    #panel-paper .pt-bar{height:6px;background:var(--bg-3);border-radius:3px;overflow:hidden;margin-top:4px}
+    #panel-paper .pt-bar>i{display:block;height:100%;background:var(--buy)}
+    #panel-paper .pt-empty{text-align:center;color:var(--ink-3);padding:30px 12px}
+    #panel-paper .up{color:var(--buy)} #panel-paper .down{color:var(--sell)}
+    @media(max-width:600px){#panel-paper .pt-grid{grid-template-columns:1fr}#panel-paper .pt-stat{grid-template-columns:repeat(2,1fr)}}
+  </style>
   <div class="panel-header">
-    <h2 class="panel-title">Option Study</h2>
-    <span class="panel-sub">Evaluate a specific option contract — underlying direction analysis + premium factors (IV, theta decay, breakeven). Analysis only; no buy/sell verdict yet.</span>
+    <h2 class="panel-title">Paper Trade</h2>
+    <span class="panel-sub">Practice selecting from the tool — no money at risk. Learn whether following it helps, and feel the gap between "stock moved my way" and "the option still lost."</span>
   </div>
 
-  <!-- Contract selector -->
-  <div class="card" style="margin-bottom:16px">
-    <div class="card-title">Select Contract</div>
-    <div class="ostudy-selector">
-      <div class="ostudy-field">
-        <label>Underlying</label>
-        <input id="ostudy-symbol" type="text" placeholder="e.g. VEDL" onkeydown="if(event.key==='Enter')ostudyLoadChain()">
-      </div>
-      <div class="ostudy-field">
-        <label>Expiry</label>
-        <select id="ostudy-expiry" disabled><option>— load chain first —</option></select>
-      </div>
-      <div class="ostudy-field">
-        <label>Strike</label>
-        <select id="ostudy-strike" disabled><option>—</option></select>
-      </div>
-      <div class="ostudy-field">
-        <label>Type</label>
-        <select id="ostudy-type">
-          <option value="CE">CE (Call)</option>
-          <option value="PE">PE (Put)</option>
-        </select>
-      </div>
-      <div class="ostudy-field" style="display:flex;align-items:flex-end">
-        <button class="btn" id="ostudy-loadchain-btn" onclick="ostudyLoadChain()">Load Chain</button>
-      </div>
-      <div class="ostudy-field" style="display:flex;align-items:flex-end">
-        <button class="btn btn-primary" id="ostudy-analyze-btn" onclick="ostudyAnalyze()" disabled>Analyse</button>
-      </div>
+  <div class="pt-sub">
+    <button class="on" data-pt="log">Log a trade</button>
+    <button data-pt="open">Open <span id="pt-open-count" style="color:var(--ink-3)"></span></button>
+    <button data-pt="review">Review</button>
+  </div>
+
+  <div id="pt-log" class="pt-card">
+    <div class="pt-grid">
+      <div class="pt-f pt-req"><label>Symbol</label><input id="pt-symbol" placeholder="VEDL" autocomplete="off"></div>
+      <div class="pt-f pt-req"><label>Your direction</label><select id="pt-dir"><option value="LONG">LONG (buy CE)</option><option value="SHORT">SHORT (buy PE)</option></select></div>
+      <div class="pt-f"><label>Tool signal</label><select id="pt-sig"><option>STRONG BUY</option><option>BUY</option><option>HOLD</option><option>SELL</option><option>STRONG SELL</option></select></div>
+      <div class="pt-f"><label>Gate</label><select id="pt-gate"><option>PASS</option><option>FAIL</option></select></div>
+      <div class="pt-f"><label>Confluence / BuyScore</label><input id="pt-bs" class="pt-mono" inputmode="numeric" placeholder="0-100"></div>
+      <div class="pt-f"><label>POT % (touch odds)</label><input id="pt-pot" class="pt-mono" inputmode="decimal" placeholder="27.5"></div>
+      <div class="pt-f pt-req"><label>Entry stock price</label><input id="pt-entry" class="pt-mono" inputmode="decimal" placeholder="274.90"></div>
+      <div class="pt-f"><label>Target stock price</label><input id="pt-tgt" class="pt-mono" inputmode="decimal" placeholder="optional"></div>
+      <div class="pt-f"><label>Invalidation / stop</label><input id="pt-inv" class="pt-mono" inputmode="decimal" placeholder="optional"></div>
+      <div class="pt-f"><label>Option contract</label><input id="pt-opt" placeholder="VEDL SEP 280 CE"></div>
+      <div class="pt-f"><label>Entry premium (from broker)</label><input id="pt-prem" class="pt-mono" inputmode="decimal" placeholder="optional"></div>
     </div>
-    <div id="ostudy-selector-status" style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-top:10px;min-height:14px"></div>
+    <div class="pt-f pt-req"><label>Why this trade? (thesis — what would prove you wrong?)</label><textarea id="pt-thesis" placeholder="Write the reason before you know the outcome. You can't log without it — the thesis is the thing you're actually testing."></textarea></div>
+    <div id="pt-agree" class="pt-hint"></div>
+    <div class="pt-note"><strong style="color:var(--gold)">Before you save:</strong> if POT is low, the tool itself doubts the target will even be touched. Logging anyway is fine — just notice you're overriding its own odds.</div>
+    <button class="btn btn-primary" id="pt-save">Log paper trade</button>
+    <span id="pt-err" class="pt-hint" style="color:var(--sell);margin-left:10px"></span>
   </div>
 
-  <div id="ostudy-result"></div>
+  <div id="pt-openwrap" class="pt-card" style="display:none"></div>
+  <div id="pt-reviewwrap" style="display:none"></div>
+
+  <div style="display:flex;gap:8px;margin-top:6px">
+    <button class="btn" id="pt-export">⬇ Export CSV</button>
+    <button class="btn" id="pt-reset">🗑 Reset paper trades</button>
+  </div>
+  <div class="pt-hint" style="margin-top:10px">Saved in this browser's localStorage (same as Tracker). Export CSV from each device you use.</div>
+
+  <!-- close modal -->
+  <div id="pt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;align-items:center;justify-content:center;padding:16px">
+    <div class="pt-card" style="max-width:420px;width:100%;margin:0">
+      <h3 id="pt-modal-title" style="margin:0 0 4px">Close trade</h3>
+      <div class="pt-hint" style="margin-bottom:12px">Enter what actually happened by your review point.</div>
+      <div class="pt-f pt-req"><label>Exit stock price</label><input id="pt-c-exit" class="pt-mono" inputmode="decimal"></div>
+      <div class="pt-f"><label>Exit premium (if you tracked the option)</label><input id="pt-c-prem" class="pt-mono" inputmode="decimal"></div>
+      <div class="pt-f"><label>What did you learn?</label><textarea id="pt-c-note" placeholder="Was your thesis right? Did the tool help or mislead?"></textarea></div>
+      <div style="display:flex;gap:8px"><button class="btn btn-primary" id="pt-c-save">Save outcome</button><button class="btn" id="pt-c-cancel">Cancel</button></div>
+    </div>
+  </div>
 </section>
 
 </main>
@@ -1560,7 +1284,6 @@ document.querySelectorAll('.tab').forEach(t => {
     if (tab === 'backtest') loadBacktest(); // always reload since stats accrue
     if (tab === 'intraday') loadIntraday(); // always reload — refreshes intraday
     if (tab === 'tracker') loadTracker();
-    if (tab === 'optstudy') loadOptionStudy();
   });
 });
 
@@ -4646,232 +4369,140 @@ function trackerClearAll() {
   trackerRenderStats();
 }
 
-// ═══════════════════════════════════════════════════════════════
-// ═══════════════════ OPTION STUDY (Tab 10) ═════════════════════
-// ═══════════════════════════════════════════════════════════════
-//
-// Evaluate one specific option contract. Workflow:
-//   1. Type underlying → Load Chain → fetches real expiries + strikes
-//   2. Pick expiry, strike, type from dropdowns (only real contracts shown)
-//   3. Analyse → shows underlying direction analysis + premium analysis
-//
-// Phase 16 is ANALYSIS ONLY — no buy/sell/hold verdict. Facts laid out
-// clearly; the user makes the call.
+</script>
+<script>
+/* ===== Paper Trade logic (self-contained) ===== */
+(function(){
+  var KEY='investiq_paper_trades_v1';
+  var $=function(id){return document.getElementById(id);};
+  function load(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}}
+  function save(a){localStorage.setItem(KEY,JSON.stringify(a));}
+  var trades=load(), pending=null;
+  var BULL=['STRONG BUY','BUY'], BEAR=['SELL','STRONG SELL'];
+  function follows(dir,sig){return (dir==='LONG'&&BULL.indexOf(sig)>=0)||(dir==='SHORT'&&BEAR.indexOf(sig)>=0);}
+  function fmt(n,d){if(n==null||isNaN(n))return '\u2014';return Number(n).toFixed(d==null?2:d);}
+  function agree(){var f=follows($('pt-dir').value,$('pt-sig').value);$('pt-agree').innerHTML=f?'<span class="pt-tag f">following the tool</span> your direction agrees with its signal.':'<span class="pt-tag o">overriding the tool</span> your direction differs from its signal \u2014 worth noticing.';}
 
-function loadOptionStudy() {
-  // Nothing to auto-load; the tab is interactive. Just ensure clean state.
-  const resultEl = document.getElementById('ostudy-result');
-  if (resultEl && !resultEl.innerHTML.trim()) {
-    resultEl.innerHTML = '<div class="empty" style="padding:40px;text-align:center;color:var(--ink-3)">Enter an underlying symbol and click "Load Chain" to begin.</div>';
-  }
-}
+  // sub-tab switching within the panel
+  document.querySelectorAll('#panel-paper .pt-sub button').forEach(function(b){
+    b.addEventListener('click',function(){
+      document.querySelectorAll('#panel-paper .pt-sub button').forEach(function(x){x.classList.remove('on')});
+      b.classList.add('on');
+      var v=b.dataset.pt;
+      $('pt-log').style.display=(v==='log')?'block':'none';
+      $('pt-openwrap').style.display=(v==='open')?'block':'none';
+      $('pt-reviewwrap').style.display=(v==='review')?'block':'none';
+      if(v==='open')renderOpen();
+      if(v==='review')renderReview();
+    });
+  });
+  // re-render counts when the main app switches to the Paper tab
+  var paperTabBtn=document.querySelector('.tab[data-tab=paper]');
+  if(paperTabBtn)paperTabBtn.addEventListener('click',function(){count();});
 
-function ostudyStatus(msg, kind) {
-  const el = document.getElementById('ostudy-selector-status');
-  if (!el) return;
-  const color = kind === 'sell' ? 'var(--sell)' : kind === 'buy' ? 'var(--buy)'
-              : kind === 'hold' ? 'var(--hold)' : 'var(--ink-3)';
-  el.style.color = color;
-  el.textContent = msg;
-}
+  ['pt-dir','pt-sig'].forEach(function(id){$(id).addEventListener('change',agree);});
+  agree();
 
-async function ostudyLoadChain() {
-  const symEl = document.getElementById('ostudy-symbol');
-  const sym = (symEl.value || '').trim().toUpperCase();
-  if (!sym) { ostudyStatus('Enter an underlying symbol first', 'hold'); return; }
+  function count(){var o=trades.filter(function(t){return t.status==='OPEN'}).length;$('pt-open-count').textContent=o?('\u00b7 '+o):'';}
 
-  const btn = document.getElementById('ostudy-loadchain-btn');
-  btn.disabled = true; btn.textContent = 'Loading...';
-  ostudyStatus(`Fetching option chain for ${sym}...`, 'hold');
+  $('pt-save').addEventListener('click',function(){
+    var t={id:Date.now(),createdAt:new Date().toISOString(),
+      symbol:($('pt-symbol').value||'').trim().toUpperCase(),
+      dir:$('pt-dir').value,sig:$('pt-sig').value,gate:$('pt-gate').value,
+      bs:($('pt-bs').value||'').trim(),pot:($('pt-pot').value||'').trim(),
+      entry:parseFloat($('pt-entry').value),tgt:($('pt-tgt').value||'').trim(),
+      inv:($('pt-inv').value||'').trim(),opt:($('pt-opt').value||'').trim(),
+      prem:($('pt-prem').value||'').trim(),thesis:($('pt-thesis').value||'').trim(),
+      followed:follows($('pt-dir').value,$('pt-sig').value),status:'OPEN'};
+    var err=[];
+    if(!t.symbol)err.push('symbol');
+    if(isNaN(t.entry))err.push('entry price');
+    if(!t.thesis)err.push('thesis');
+    if(err.length){$('pt-err').textContent='Add: '+err.join(', ')+'.';return;}
+    $('pt-err').textContent='';
+    trades.push(t);save(trades);count();
+    ['pt-symbol','pt-bs','pt-pot','pt-entry','pt-tgt','pt-inv','pt-opt','pt-prem','pt-thesis'].forEach(function(id){$(id).value='';});
+    document.querySelector('#panel-paper .pt-sub button[data-pt=open]').click();
+  });
 
-  try {
-    const res = await fetch('/api/option-study/chain/' + encodeURIComponent(sym));
-    const data = await res.json();
-    if (!data.ok) {
-      ostudyStatus('Could not load chain: ' + (data.error || 'unknown'), 'sell');
-      btn.disabled = false; btn.textContent = 'Load Chain';
-      return;
-    }
-    // Populate expiry dropdown
-    const expSel = document.getElementById('ostudy-expiry');
-    if (!data.expiries || data.expiries.length === 0) {
-      ostudyStatus('No expiries found for ' + sym, 'sell');
-      btn.disabled = false; btn.textContent = 'Load Chain';
-      return;
-    }
-    expSel.innerHTML = data.expiries.map(e =>
-      `<option value="${e.expiry}">${e.date} (${e.dte}d)</option>`
-    ).join('');
-    expSel.disabled = false;
-
-    // Populate strike dropdown — default-select strike nearest to spot
-    const strikeSel = document.getElementById('ostudy-strike');
-    const spot = data.spot;
-    strikeSel.innerHTML = data.strikes.map(s => {
-      const tag = spot ? (Math.abs(s - spot) < (data.strikes[1]-data.strikes[0] || 1) / 2 ? ' ◄ ATM' : '') : '';
-      return `<option value="${s}">${s}${tag}</option>`;
-    }).join('');
-    strikeSel.disabled = false;
-    // Select nearest-to-spot strike
-    if (spot) {
-      let nearest = data.strikes[0], minDiff = Infinity;
-      for (const s of data.strikes) {
-        const d = Math.abs(s - spot);
-        if (d < minDiff) { minDiff = d; nearest = s; }
-      }
-      strikeSel.value = nearest;
-    }
-
-    document.getElementById('ostudy-analyze-btn').disabled = false;
-    ostudyStatus(`Chain loaded. Spot ₹${spot != null ? spot.toFixed(2) : '—'} · ${data.expiries.length} expiries · ${data.strikes.length} strikes. Pick a contract and Analyse.`, 'buy');
-  } catch (e) {
-    ostudyStatus('Error: ' + e.message, 'sell');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Load Chain';
-  }
-}
-
-async function ostudyAnalyze() {
-  const sym = (document.getElementById('ostudy-symbol').value || '').trim().toUpperCase();
-  const expiry = document.getElementById('ostudy-expiry').value;
-  const strike = document.getElementById('ostudy-strike').value;
-  const type = document.getElementById('ostudy-type').value;
-  if (!sym || !expiry || !strike) { ostudyStatus('Pick all fields first', 'hold'); return; }
-
-  const btn = document.getElementById('ostudy-analyze-btn');
-  btn.disabled = true; btn.textContent = 'Analysing...';
-  ostudyStatus('Analysing contract — fetching premium + underlying...', 'hold');
-  const resultEl = document.getElementById('ostudy-result');
-  resultEl.innerHTML = '<div class="empty" style="padding:40px;text-align:center;color:var(--ink-3)">Analysing...</div>';
-
-  try {
-    const qs = `symbol=${encodeURIComponent(sym)}&strike=${strike}&type=${type}&expiry=${expiry}`;
-    const res = await fetch('/api/option-study/analyze?' + qs);
-    const data = await res.json();
-    if (!data.ok) {
-      resultEl.innerHTML = `<div class="empty" style="padding:40px;text-align:center;color:var(--sell)">${data.error || 'Analysis failed'}</div>`;
-      ostudyStatus('Analysis failed', 'sell');
-      return;
-    }
-    resultEl.innerHTML = renderOptionStudy(data);
-    ostudyStatus('Done.', 'buy');
-  } catch (e) {
-    resultEl.innerHTML = `<div class="empty" style="padding:40px;text-align:center;color:var(--sell)">Error: ${e.message}</div>`;
-    ostudyStatus('Error: ' + e.message, 'sell');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Analyse';
-  }
-}
-
-function renderOptionStudy(data) {
-  const c = data.contract;
-  const p = data.premiumAnalysis || {};
-  const u = data.underlying || {};
-  const fmtN = (v, d = 2) => (v == null || !Number.isFinite(v)) ? '—' : Number(v).toFixed(d);
-  const fmtPct = (v) => (v == null || !Number.isFinite(v)) ? '—' : (v > 0 ? '+' : '') + Number(v).toFixed(2) + '%';
-
-  // ── Hero ──
-  const hero = `
-    <div class="ostudy-hero">
-      <div>
-        <div class="ostudy-hero-title">${c.symbol} ${c.strike} ${c.type}</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);margin-top:4px">
-          Expiry in ${c.dte} days · Spot ₹${fmtN(data.spot)} ·
-          <span class="ostudy-moneyness ${p.moneyness}">${p.moneyness}</span>
-        </div>
-      </div>
-      <div style="text-align:right">
-        <div class="ostudy-hero-premium">₹${fmtN(data.premium)}</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-3)">premium / share</div>
-      </div>
-    </div>
-  `;
-
-  // ── Premium analysis card ──
-  const decayCells = p.decayProjection ? `
-    <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-3);letter-spacing:0.06em;margin-top:12px;margin-bottom:4px">
-      THETA DECAY PROJECTION (if stock + IV stay flat)
-    </div>
-    <div class="ostudy-decay-bar">
-      <div class="ostudy-decay-cell"><div class="d-label">NOW</div><div class="d-value">₹${fmtN(data.premium)}</div></div>
-      <div class="ostudy-decay-cell"><div class="d-label">+1 DAY</div><div class="d-value">₹${fmtN(p.decayProjection.day1)}</div></div>
-      <div class="ostudy-decay-cell"><div class="d-label">+3 DAYS</div><div class="d-value">₹${fmtN(p.decayProjection.day3)}</div></div>
-      <div class="ostudy-decay-cell"><div class="d-label">+5 DAYS</div><div class="d-value">₹${fmtN(p.decayProjection.day5)}</div></div>
-      <div class="ostudy-decay-cell"><div class="d-label">EXPIRY</div><div class="d-value">₹${fmtN(p.decayProjection.atExpiry)}</div></div>
-    </div>
-    <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-3);margin-top:6px;font-style:italic">
-      Linear theta estimate — real decay accelerates near expiry. At expiry only intrinsic value (₹${fmtN(p.intrinsic)}) remains.
-    </div>
-  ` : '';
-
-  const premiumCard = `
-    <div class="card">
-      <div class="card-title">Premium Analysis</div>
-      <div class="ostudy-metric-row"><span class="label">Implied Volatility (IV)</span><span class="value">${fmtN(p.iv, 1)}%</span></div>
-      <div class="ostudy-metric-row"><span class="label">India VIX (reference)</span><span class="value">${fmtN(p.indiaVix, 2)}</span></div>
-      <div class="ostudy-metric-row"><span class="label">Delta</span><span class="value">${fmtN(p.delta, 3)}</span></div>
-      <div class="ostudy-metric-row"><span class="label">Gamma</span><span class="value">${fmtN(p.gamma, 4)}</span></div>
-      <div class="ostudy-metric-row"><span class="label">Theta (₹/day)</span><span class="value" style="color:var(--sell)">${fmtN(p.theta, 2)}</span></div>
-      <div class="ostudy-metric-row"><span class="label">Vega</span><span class="value">${fmtN(p.vega, 2)}</span></div>
-      <div class="ostudy-metric-row"><span class="label">Daily decay (% of premium)</span><span class="value" style="color:var(--sell)">${fmtN(p.decayPctPerDay, 2)}%</span></div>
-      <div class="ostudy-metric-row"><span class="label">Intrinsic / Extrinsic</span><span class="value">₹${fmtN(p.intrinsic)} / ₹${fmtN(p.extrinsic)}</span></div>
-      <div class="ostudy-metric-row"><span class="label">Breakeven (stock price)</span><span class="value">₹${fmtN(p.breakeven)}</span></div>
-      <div class="ostudy-metric-row"><span class="label">Move needed to breakeven</span><span class="value">${fmtPct(p.breakevenMovePct)}</span></div>
-      <div class="ostudy-metric-row"><span class="label">Prob. of profit (at expiry)</span><span class="value">${fmtN(p.probabilityOfProfit, 1)}%</span></div>
-      <div class="ostudy-metric-row"><span class="label">Prob. touch breakeven</span><span class="value">${fmtN(p.probabilityTouchBreakeven, 1)}%</span></div>
-      <div class="ostudy-metric-row"><span class="label">Open Interest / Volume</span><span class="value">${p.oi != null ? p.oi.toLocaleString() : '—'} / ${p.volume != null ? p.volume.toLocaleString() : '—'}</span></div>
-      ${decayCells}
-    </div>
-  `;
-
-  // ── Underlying analysis card ──
-  let underlyingCard;
-  if (u.error) {
-    underlyingCard = `<div class="card"><div class="card-title">Underlying Direction</div><div style="color:var(--sell);font-family:'JetBrains Mono',monospace;font-size:11px">${u.error}</div></div>`;
-  } else {
-    const sigColor = (u.signal || '').includes('BUY') ? 'var(--buy)'
-                   : (u.signal || '').includes('SELL') ? 'var(--sell)' : 'var(--hold)';
-    const gateColor = u.gatingVerdict === 'PASS' ? 'var(--buy)' : 'var(--sell)';
-    underlyingCard = `
-      <div class="card">
-        <div class="card-title">Underlying Direction — ${c.symbol}</div>
-        <div class="ostudy-metric-row"><span class="label">Scanner signal</span><span class="value" style="color:${sigColor}">${u.signal || '—'}</span></div>
-        <div class="ostudy-metric-row"><span class="label">Signal confidence</span><span class="value">${fmtN(u.confidence, 0)}</span></div>
-        <div class="ostudy-metric-row"><span class="label">Confluence score / tier</span><span class="value">${fmtN(u.confluenceScore, 0)} · ${u.confluenceTier || '—'}</span></div>
-        <div class="ostudy-metric-row"><span class="label">Range state</span><span class="value">${u.rangeState || '—'}</span></div>
-        <div class="ostudy-metric-row"><span class="label">Volume character</span><span class="value">${u.volumeCharacter || '—'}</span></div>
-        <div class="ostudy-metric-row"><span class="label">Resistance cluster</span><span class="value">${u.resistanceClusterCount != null ? u.resistanceClusterCount + ' levels' : '—'}</span></div>
-        <div class="ostudy-metric-row"><span class="label">RSI / Trend score</span><span class="value">${fmtN(u.rsi, 0)} / ${u.trendScore != null ? u.trendScore + '/8' : '—'}</span></div>
-        <div class="ostudy-metric-row"><span class="label">Underlying invalidation</span><span class="value">${u.invalidation != null ? '₹' + fmtN(u.invalidation) : '—'}</span></div>
-        <div class="ostudy-metric-row"><span class="label">Cross-engine gating (option)</span><span class="value" style="color:${gateColor}">${u.gatingVerdict || '—'}</span></div>
-        ${u.gatingFailures && u.gatingFailures.length ? `
-          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-3);margin-top:8px;line-height:1.6">
-            ${u.gatingFailures.map(f => '• ' + f).join('<br>')}
-          </div>
-        ` : ''}
-      </div>
-    `;
+  function renderOpen(){
+    count();
+    var open=trades.filter(function(t){return t.status==='OPEN'});
+    if(!open.length){$('pt-openwrap').innerHTML='<div class="pt-empty"><strong>No open paper trades</strong><br>Pick a name off the tool, write why, and come back in a day or two.</div>';return;}
+    var h='<table><thead><tr><th>Symbol</th><th>Dir</th><th>Tool</th><th class="r">Entry</th><th>Thesis</th><th></th></tr></thead><tbody>';
+    open.forEach(function(t){
+      h+='<tr><td><strong>'+t.symbol+'</strong><br><span style="color:var(--ink-3);font-size:10px">'+new Date(t.createdAt).toLocaleDateString()+'</span></td>'+
+        '<td>'+t.dir+'</td>'+
+        '<td><span class="pt-tag '+(t.gate==='PASS'?'p':'x')+'">'+t.sig+' \u00b7 '+t.gate+'</span><br><span class="pt-tag '+(t.followed?'f':'o')+'">'+(t.followed?'followed':'override')+'</span></td>'+
+        '<td class="r pt-mono">'+fmt(t.entry)+(t.opt?'<br><span style="color:var(--ink-3);font-size:10px">'+t.opt+' @'+(t.prem||'\u2014')+'</span>':'')+'</td>'+
+        '<td style="max-width:240px">'+t.thesis+'</td>'+
+        '<td><button class="btn" data-close="'+t.id+'">Close</button></td></tr>';
+    });
+    h+='</tbody></table>';
+    $('pt-openwrap').innerHTML=h;
+    document.querySelectorAll('#panel-paper [data-close]').forEach(function(b){b.addEventListener('click',function(){openClose(parseInt(b.dataset.close,10));});});
   }
 
-  // ── Honest framing note ──
-  const note = `
-    <div style="font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace;margin-top:16px;padding:12px 14px;background:rgba(255,255,255,.02);border-radius:4px;line-height:1.7">
-      <strong style="color:var(--accent)">Reading this:</strong> The left panel is the option's own math — IV, Greeks, how fast premium decays, what stock price you need to break even. The right panel is the underlying stock's direction analysis (same engines as Scanner / Stock Search).<br>
-      <strong style="color:var(--hold)">For a BUY to work:</strong> the stock must move in your favour <em>faster than theta erodes the premium</em>, and reach beyond the breakeven (₹${fmtN(p.breakeven)}) before expiry.<br>
-      <strong style="color:var(--ink-2)">No verdict shown:</strong> This is analysis only. A buy/sell/hold verdict will be added after the 15-day tracker test validates the scoring. For now — the facts are here, the decision is yours.
-    </div>
-  `;
+  function openClose(id){pending=id;var t=trades.filter(function(x){return x.id===id})[0];$('pt-modal-title').textContent='Close '+t.symbol;$('pt-c-exit').value='';$('pt-c-prem').value='';$('pt-c-note').value='';$('pt-modal').style.display='flex';$('pt-c-exit').focus();}
+  $('pt-c-cancel').addEventListener('click',function(){$('pt-modal').style.display='none';pending=null;});
+  $('pt-c-save').addEventListener('click',function(){
+    var t=trades.filter(function(x){return x.id===pending})[0];if(!t)return;
+    var exit=parseFloat($('pt-c-exit').value);if(isNaN(exit)){$('pt-c-exit').focus();return;}
+    t.exit=exit;t.exitPrem=($('pt-c-prem').value||'').trim();t.reviewNote=($('pt-c-note').value||'').trim();
+    t.closedAt=new Date().toISOString();t.status='CLOSED';
+    var raw=(exit-t.entry)/t.entry*100;
+    t.stockMove=parseFloat((t.dir==='LONG'?raw:-raw).toFixed(3));
+    t.win=t.stockMove>0;
+    if(t.prem&&t.exitPrem){t.optPnl=parseFloat((((parseFloat(t.exitPrem)-parseFloat(t.prem))/parseFloat(t.prem))*100).toFixed(1));}else{t.optPnl=null;}
+    save(trades);$('pt-modal').style.display='none';pending=null;
+    document.querySelector('#panel-paper .pt-sub button[data-pt=review]').click();
+  });
 
-  return `
-    <div class="card" style="margin-bottom:16px">${hero}</div>
-    <div class="ostudy-grid">
-      ${premiumCard}
-      ${underlyingCard}
-    </div>
-    ${note}
-  `;
-}
+  function renderReview(){
+    var c=trades.filter(function(t){return t.status==='CLOSED'});
+    if(!c.length){$('pt-reviewwrap').innerHTML='<div class="pt-card"><div class="pt-empty"><strong>Nothing to review yet</strong><br>Close a few paper trades \u2014 this screen tells you whether following the tool actually helped.</div></div>';return;}
+    var wins=c.filter(function(t){return t.win}).length;
+    var wr=wins/c.length*100;
+    var avg=c.reduce(function(s,t){return s+t.stockMove},0)/c.length;
+    var trap=c.filter(function(t){return t.win&&t.optPnl!=null&&t.optPnl<0}).length;
+    function seg(a){return a.length?(a.filter(function(t){return t.win}).length/a.length*100).toFixed(0)+'% <span style="color:var(--ink-3)">('+a.filter(function(t){return t.win}).length+'/'+a.length+')</span>':'<span style="color:var(--ink-3)">\u2014</span>';}
+    function segp(a){return a.length?a.filter(function(t){return t.win}).length/a.length*100:0;}
+    var foll=c.filter(function(t){return t.followed}),over=c.filter(function(t){return !t.followed});
+    var gp=c.filter(function(t){return t.gate==='PASS'}),gf=c.filter(function(t){return t.gate==='FAIL'});
+    var h='<div class="pt-stat">'+
+      '<div class="pt-box"><div class="v '+(wr>=50?'up':'down')+'">'+wr.toFixed(0)+'%</div><div class="k">directional win rate</div></div>'+
+      '<div class="pt-box"><div class="v '+(avg>=0?'up':'down')+'">'+(avg>=0?'+':'')+avg.toFixed(2)+'%</div><div class="k">avg stock move (your way)</div></div>'+
+      '<div class="pt-box"><div class="v">'+c.length+'</div><div class="k">closed trades</div></div>'+
+      '<div class="pt-box"><div class="v" style="color:'+(trap?'var(--gold)':'var(--ink)')+'">'+trap+'</div><div class="k">stock right, option lost</div></div></div>';
+    h+='<div class="pt-card"><strong>Did following the tool help?</strong><div class="pt-hint" style="margin:6px 0 14px">If "followed" doesn\u2019t beat "override", the tool hasn\u2019t earned your trust yet.</div>'+
+      '<div style="margin-bottom:10px"><span class="pt-tag f">followed</span> '+seg(foll)+'<div class="pt-bar"><i style="width:'+segp(foll)+'%"></i></div></div>'+
+      '<div style="margin-bottom:10px"><span class="pt-tag o">override</span> '+seg(over)+'<div class="pt-bar"><i style="width:'+segp(over)+'%"></i></div></div>'+
+      '<div style="margin-bottom:10px"><span class="pt-tag p">gate PASS</span> '+seg(gp)+'<div class="pt-bar"><i style="width:'+segp(gp)+'%"></i></div></div>'+
+      '<div><span class="pt-tag x">gate FAIL</span> '+seg(gf)+'<div class="pt-bar"><i style="width:'+segp(gf)+'%"></i></div></div></div>';
+    if(trap){h+='<div class="pt-note"><strong style="color:var(--gold)">The theta lesson, '+trap+'\u00d7:</strong> the stock moved your way but the option still lost. Being right on direction isn\u2019t enough when you buy premium \u2014 the move must be big and fast.</div>';}
+    h+='<div class="pt-card"><strong>All closed trades</strong><table style="margin-top:10px"><thead><tr><th>Symbol</th><th>Tool</th><th class="r">Stock</th><th class="r">Option</th><th>Thesis \u2192 learning</th></tr></thead><tbody>';
+    c.slice().reverse().forEach(function(t){
+      h+='<tr><td><strong>'+t.symbol+'</strong> <span style="color:var(--ink-3)">'+t.dir+'</span></td>'+
+        '<td><span class="pt-tag '+(t.followed?'f':'o')+'">'+(t.followed?'followed':'override')+'</span></td>'+
+        '<td class="r pt-mono '+(t.win?'up':'down')+'">'+(t.stockMove>=0?'+':'')+t.stockMove+'%</td>'+
+        '<td class="r pt-mono '+(t.optPnl==null?'':(t.optPnl>=0?'up':'down'))+'">'+(t.optPnl==null?'\u2014':(t.optPnl>=0?'+':'')+t.optPnl+'%')+'</td>'+
+        '<td style="max-width:280px">'+t.thesis+(t.reviewNote?'<br><span style="color:var(--ink-3)">\u21b3 '+t.reviewNote+'</span>':'')+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    $('pt-reviewwrap').innerHTML=h;
+  }
 
+  $('pt-export').addEventListener('click',function(){
+    if(!trades.length)return;
+    var cols=['id','createdAt','closedAt','symbol','dir','sig','gate','followed','bs','pot','entry','tgt','inv','opt','prem','exit','exitPrem','stockMove','optPnl','win','thesis','reviewNote','status'];
+    var esc=function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';};
+    var csv=[cols.join(',')].concat(trades.map(function(t){return cols.map(function(k){return esc(t[k]);}).join(',');})).join('\n');
+    var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='investiq-paper-trades-'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+  });
+  $('pt-reset').addEventListener('click',function(){if(confirm('Delete all paper trades on this device? Cannot be undone.')){trades=[];save(trades);count();renderOpen();renderReview();}});
+
+  count();
+})();
 </script>
 </body>
 </html>
