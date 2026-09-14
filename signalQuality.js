@@ -151,14 +151,51 @@ function analyzeVolumeCharacter({ candles, currentPrice, nearestResistance }) {
     note = `${volumeMultiple}× vol with weak close (CPR ${todayCPR.toFixed(2)}) at resistance — distribution`;
     blockBuySignals = true;
   }
-  // 4. ACCUMULATION: high volume + strong close + green candle
-  else if (volumeMultiple >= 1.5 && todayCPR >= 0.75 && todayGreen) {
+  // 4. WEAK_RALLY: price has risen over the past 5 sessions but average volume
+  //    is below 0.8× the 20-day baseline. Classic warning — rally not confirmed
+  //    by participation, prone to violent reversal. This was the VEDL pattern:
+  //    price climbed from ~₹326 to ₹352 across 8 sessions, never breaking 0.7×
+  //    average volume, then collapsed 13% over the next 6 sessions.
+  //
+  //    Criteria:
+  //      - 5+ session price uptrend (close[N] > close[N-5] by at least 1%)
+  //      - Average vol_ratio over last 5 sessions < 0.8
+  //      - Today's price > today's open OR within 1% of recent high
+  //      (the last clause ensures we're talking about a CURRENT rally, not
+  //       checking a stale uptrend that already topped out)
+  //
+  //    Adjustment: -8 (between ACCUMULATION +5 and DISTRIBUTION -10).
+  //    Does NOT hard-block BUYs — it's a warning, not an override.
+  //    The combination of low confluence + this warning will be what triggers
+  //    the gating system to downgrade, not this signal alone.
+  else if (candles.length >= 25) {
+    const last5 = candles.slice(-5);
+    const last5Avg20 = candles.slice(-25, -5);
+    const baseAvg = last5Avg20.reduce((s, c) => s + (c.v || 0), 0) / Math.max(1, last5Avg20.length);
+    const last5VolAvg = last5.reduce((s, c) => s + (c.v || 0), 0) / last5.length;
+    const last5VolRatio = baseAvg > 0 ? last5VolAvg / baseAvg : 0;
+    const priceChange5d = (todayCandle.c - last5[0].c) / last5[0].c;
+    const last20High = Math.max(...last20.map(c => c.h));
+    const nearRecentHigh = todayCandle.c >= last20High * 0.97; // within 3% of recent high
+    const isUptrend5d = priceChange5d >= 0.01; // at least +1% over 5 sessions
+    const todayGreenOrFlat = todayCandle.c >= todayCandle.o;
+
+    if (isUptrend5d && last5VolRatio < 0.8 && (todayGreenOrFlat || nearRecentHigh)) {
+      category = 'WEAK_RALLY';
+      adjustment = -8;
+      note = `Price up ${(priceChange5d * 100).toFixed(1)}% over 5 sessions on ${last5VolRatio.toFixed(2)}× avg volume — rally lacks participation`;
+      // Surface the underlying numbers in the volume character return
+      // (we already return volumeMultiple but the 5-day ratio is what fires this)
+    }
+  }
+  // 5. ACCUMULATION: high volume + strong close + green candle
+  if (category === 'NORMAL' && volumeMultiple >= 1.5 && todayCPR >= 0.75 && todayGreen) {
     category = 'ACCUMULATION';
     adjustment = 5;
     note = `${volumeMultiple}× vol, strong close (CPR ${todayCPR.toFixed(2)}), green candle — accumulation`;
   }
-  // 5. STEALTH_BUILDUP: 5+ consecutive above-avg vol days with avg strong close
-  else {
+  // 6. STEALTH_BUILDUP: 5+ consecutive above-avg vol days with avg strong close
+  if (category === 'NORMAL') {
     const last5 = candles.slice(-5);
     const last5Avg20 = candles.slice(-25, -5);
     const baseAvg = last5Avg20.reduce((s, c) => s + (c.v || 0), 0) / Math.max(1, last5Avg20.length);

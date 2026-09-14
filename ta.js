@@ -89,7 +89,7 @@
       let si = 0;
       for (let i = 0; i < macdLine.length; i++) {
         if (macdLine[i] === null) { signalLine.push(null); continue; }
-        signalLine.push(sigEma[si] || null);
+        signalLine.push(sigEma[si] ?? null);
         si++;
       }
       const histogram = macdLine.map((v, i) =>
