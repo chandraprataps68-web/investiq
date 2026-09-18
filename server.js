@@ -80,7 +80,12 @@ function getFyers() {
 }
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    // Never cache the app shell so deploys are picked up immediately
+    if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-store');
+  }
+}));
 
 // ═══════════════════════════════════════════════════════════
 //  AUTH (v5 paths preserved exactly)
@@ -1629,7 +1634,10 @@ app.get('/api/health', (req, res) => {
 //  SPA fallback
 // ═══════════════════════════════════════════════════════════
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store'); // app shell must always be fresh
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 app.listen(PORT, () => {
   console.log(`InvestIQ Pro v6 listening on :${PORT}`);
