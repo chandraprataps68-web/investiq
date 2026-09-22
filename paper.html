@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InvestIQ — Paper Trade</title>
+<style>
+  :root{
+    --bg:#0a0e13;--bg-2:#11161d;--bg-3:#181f29;--ink:#e6edf3;--ink-2:#8b98a8;--ink-3:#5c6773;
+    --accent:#4a9eff;--buy:#00c896;--sell:#ff4d6d;--gold:#d4af37;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5}
+  .wrap{max-width:1000px;margin:0 auto;padding:22px 16px 60px}
+  h1{font-size:20px;margin:0}h1 span{color:var(--ink-3);font-weight:400}
+  a.back{color:var(--accent);font-size:13px;text-decoration:none}
+  .sub{color:var(--ink-2);font-size:13px;margin:6px 0 18px}
+  .pt-sub{display:flex;gap:4px;border-bottom:1px solid rgba(255,255,255,.08);margin:14px 0 18px}
+  .pt-sub button{background:none;border:none;color:var(--ink-2);padding:9px 14px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;font-family:inherit}
+  .pt-sub button.on{color:var(--ink);border-bottom-color:var(--accent)}
+  .pt-card{background:var(--bg-2);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:16px;margin-bottom:14px}
+  .pt-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .pt-f{margin-bottom:10px}
+  label{display:block;font-size:11px;color:var(--ink-2);margin-bottom:4px}
+  .pt-req label::after{content:" *";color:var(--gold)}
+  input,select,textarea{width:100%;background:var(--bg-3);border:1px solid rgba(255,255,255,.08);color:var(--ink);border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit}
+  textarea{min-height:58px;resize:vertical}
+  .mono{font-family:var(--mono)}
+  .btn{background:var(--bg-3);border:1px solid rgba(255,255,255,.12);color:var(--ink);border-radius:6px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#06121f;font-weight:600}
+  .note{background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.3);border-radius:6px;padding:9px 12px;font-size:12px;color:#e8d9b0;margin:10px 0}
+  .hint{font-size:11px;color:var(--ink-3);margin-top:4px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:8px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
+  td.r,th.r{text-align:right}th{color:var(--ink-3);font-size:10.5px;font-weight:500}
+  .tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.14);color:var(--ink-2)}
+  .tag.f{color:var(--accent);border-color:rgba(74,158,255,.4)}.tag.o{color:var(--gold);border-color:rgba(212,175,55,.4)}
+  .tag.p{color:var(--buy);border-color:rgba(0,200,150,.4)}.tag.x{color:var(--sell);border-color:rgba(255,77,109,.4)}
+  .stat{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+  .box{background:var(--bg-2);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:13px}
+  .box .v{font-family:var(--mono);font-size:20px}.box .k{font-size:10.5px;color:var(--ink-3);margin-top:2px}
+  .bar{height:6px;background:var(--bg-3);border-radius:3px;overflow:hidden;margin-top:4px}.bar>i{display:block;height:100%;background:var(--buy)}
+  .empty{text-align:center;color:var(--ink-3);padding:30px}
+  .up{color:var(--buy)}.down{color:var(--sell)}
+  @media(max-width:600px){.pt-grid{grid-template-columns:1fr}.stat{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:baseline">
+    <h1>Paper Trade <span>/ InvestIQ</span></h1>
+    <a class="back" href="/">← back to app</a>
+  </div>
+  <div class="sub">Practice selecting from the tool — no money at risk. Learn whether following it helps, and feel the gap between "stock moved my way" and "the option still lost."</div>
+
+  <div class="pt-sub">
+    <button class="on" data-pt="log">Log a trade</button>
+    <button data-pt="open">Open <span id="pt-open-count" style="color:var(--ink-3)"></span></button>
+    <button data-pt="review">Review</button>
+  </div>
+
+  <div id="pt-log" class="pt-card">
+    <div class="pt-grid">
+      <div class="pt-f pt-req"><label>Symbol</label><input id="pt-symbol" placeholder="VEDL" autocomplete="off"></div>
+      <div class="pt-f pt-req"><label>Your direction</label><select id="pt-dir"><option value="LONG">LONG (buy CE)</option><option value="SHORT">SHORT (buy PE)</option></select></div>
+      <div class="pt-f"><label>Tool signal</label><select id="pt-sig"><option>STRONG BUY</option><option>BUY</option><option>HOLD</option><option>SELL</option><option>STRONG SELL</option></select></div>
+      <div class="pt-f"><label>Gate</label><select id="pt-gate"><option>PASS</option><option>FAIL</option></select></div>
+      <div class="pt-f"><label>Confluence / BuyScore</label><input id="pt-bs" class="mono" inputmode="numeric" placeholder="0-100"></div>
+      <div class="pt-f"><label>POT % (touch odds)</label><input id="pt-pot" class="mono" inputmode="decimal" placeholder="27.5"></div>
+      <div class="pt-f pt-req"><label>Entry stock price</label><input id="pt-entry" class="mono" inputmode="decimal" placeholder="274.90"></div>
+      <div class="pt-f"><label>Target stock price</label><input id="pt-tgt" class="mono" inputmode="decimal" placeholder="optional"></div>
+      <div class="pt-f"><label>Invalidation / stop</label><input id="pt-inv" class="mono" inputmode="decimal" placeholder="optional"></div>
+      <div class="pt-f"><label>Option contract</label><input id="pt-opt" placeholder="VEDL SEP 280 CE"></div>
+      <div class="pt-f"><label>Entry premium (from broker)</label><input id="pt-prem" class="mono" inputmode="decimal" placeholder="optional"></div>
+    </div>
+    <div class="pt-f pt-req"><label>Why this trade? (thesis — what would prove you wrong?)</label><textarea id="pt-thesis" placeholder="Write the reason before you know the outcome. You can't log without it."></textarea></div>
+    <div id="pt-agree" class="hint"></div>
+    <div class="note"><strong style="color:var(--gold)">Before you save:</strong> if POT is low, the tool itself doubts the target will even be touched. Logging anyway is fine — just notice you're overriding its own odds.</div>
+    <button class="btn primary" id="pt-save">Log paper trade</button>
+    <span id="pt-err" class="hint" style="color:var(--sell);margin-left:10px"></span>
+  </div>
+
+  <div id="pt-openwrap" class="pt-card" style="display:none"></div>
+  <div id="pt-reviewwrap" style="display:none"></div>
+
+  <div style="display:flex;gap:8px;margin-top:6px">
+    <button class="btn" id="pt-export">⬇ Export CSV</button>
+    <button class="btn" id="pt-reset">🗑 Reset paper trades</button>
+  </div>
+  <div class="hint" style="margin-top:10px">Saved in this browser's localStorage. Export CSV from each device you use.</div>
+
+  <div id="pt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;align-items:center;justify-content:center;padding:16px">
+    <div class="pt-card" style="max-width:420px;width:100%;margin:0">
+      <h3 id="pt-modal-title" style="margin:0 0 4px">Close trade</h3>
+      <div class="hint" style="margin-bottom:12px">Enter what actually happened by your review point.</div>
+      <div class="pt-f pt-req"><label>Exit stock price</label><input id="pt-c-exit" class="mono" inputmode="decimal"></div>
+      <div class="pt-f"><label>Exit premium (if you tracked the option)</label><input id="pt-c-prem" class="mono" inputmode="decimal"></div>
+      <div class="pt-f"><label>What did you learn?</label><textarea id="pt-c-note" placeholder="Was your thesis right? Did the tool help or mislead?"></textarea></div>
+      <div style="display:flex;gap:8px"><button class="btn primary" id="pt-c-save">Save outcome</button><button class="btn" id="pt-c-cancel">Cancel</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var KEY='investiq_paper_trades_v1';
+  var $=function(id){return document.getElementById(id);};
+  function load(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}}
+  function save(a){localStorage.setItem(KEY,JSON.stringify(a));}
+  var trades=load(),pending=null;
+  var BULL=['STRONG BUY','BUY'],BEAR=['SELL','STRONG SELL'];
+  function follows(d,s){return (d==='LONG'&&BULL.indexOf(s)>=0)||(d==='SHORT'&&BEAR.indexOf(s)>=0);}
+  function fmt(n,d){if(n==null||isNaN(n))return '\u2014';return Number(n).toFixed(d==null?2:d);}
+  function agree(){var f=follows($('pt-dir').value,$('pt-sig').value);$('pt-agree').innerHTML=f?'<span class="tag f">following the tool</span> your direction agrees with its signal.':'<span class="tag o">overriding the tool</span> your direction differs from its signal.';}
+  document.querySelectorAll('.pt-sub button').forEach(function(b){b.addEventListener('click',function(){document.querySelectorAll('.pt-sub button').forEach(function(x){x.classList.remove('on')});b.classList.add('on');var v=b.dataset.pt;$('pt-log').style.display=v==='log'?'block':'none';$('pt-openwrap').style.display=v==='open'?'block':'none';$('pt-reviewwrap').style.display=v==='review'?'block':'none';if(v==='open')renderOpen();if(v==='review')renderReview();});});
+  ['pt-dir','pt-sig'].forEach(function(id){$(id).addEventListener('change',agree);});agree();
+  function count(){var o=trades.filter(function(t){return t.status==='OPEN'}).length;$('pt-open-count').textContent=o?('\u00b7 '+o):'';}
+  $('pt-save').addEventListener('click',function(){
+    var t={id:Date.now(),createdAt:new Date().toISOString(),symbol:($('pt-symbol').value||'').trim().toUpperCase(),dir:$('pt-dir').value,sig:$('pt-sig').value,gate:$('pt-gate').value,bs:($('pt-bs').value||'').trim(),pot:($('pt-pot').value||'').trim(),entry:parseFloat($('pt-entry').value),tgt:($('pt-tgt').value||'').trim(),inv:($('pt-inv').value||'').trim(),opt:($('pt-opt').value||'').trim(),prem:($('pt-prem').value||'').trim(),thesis:($('pt-thesis').value||'').trim(),followed:follows($('pt-dir').value,$('pt-sig').value),status:'OPEN'};
+    var e=[];if(!t.symbol)e.push('symbol');if(isNaN(t.entry))e.push('entry price');if(!t.thesis)e.push('thesis');
+    if(e.length){$('pt-err').textContent='Add: '+e.join(', ')+'.';return;}$('pt-err').textContent='';
+    trades.push(t);save(trades);count();['pt-symbol','pt-bs','pt-pot','pt-entry','pt-tgt','pt-inv','pt-opt','pt-prem','pt-thesis'].forEach(function(id){$(id).value='';});
+    document.querySelector('.pt-sub button[data-pt=open]').click();
+  });
+  function renderOpen(){count();var open=trades.filter(function(t){return t.status==='OPEN'});if(!open.length){$('pt-openwrap').innerHTML='<div class="empty"><strong>No open paper trades</strong><br>Pick a name off the tool, write why, come back in a day or two.</div>';return;}
+    var h='<table><thead><tr><th>Symbol</th><th>Dir</th><th>Tool</th><th class="r">Entry</th><th>Thesis</th><th></th></tr></thead><tbody>';
+    open.forEach(function(t){h+='<tr><td><strong>'+t.symbol+'</strong></td><td>'+t.dir+'</td><td><span class="tag '+(t.gate==='PASS'?'p':'x')+'">'+t.sig+' \u00b7 '+t.gate+'</span> <span class="tag '+(t.followed?'f':'o')+'">'+(t.followed?'followed':'override')+'</span></td><td class="r mono">'+fmt(t.entry)+(t.opt?'<br><span style="color:var(--ink-3);font-size:10px">'+t.opt+' @'+(t.prem||'\u2014')+'</span>':'')+'</td><td style="max-width:240px">'+t.thesis+'</td><td><button class="btn" data-close="'+t.id+'">Close</button></td></tr>';});
+    h+='</tbody></table>';$('pt-openwrap').innerHTML=h;document.querySelectorAll('[data-close]').forEach(function(b){b.addEventListener('click',function(){openClose(parseInt(b.dataset.close,10));});});}
+  function openClose(id){pending=id;var t=trades.filter(function(x){return x.id===id})[0];$('pt-modal-title').textContent='Close '+t.symbol;$('pt-c-exit').value='';$('pt-c-prem').value='';$('pt-c-note').value='';$('pt-modal').style.display='flex';$('pt-c-exit').focus();}
+  $('pt-c-cancel').addEventListener('click',function(){$('pt-modal').style.display='none';pending=null;});
+  $('pt-c-save').addEventListener('click',function(){var t=trades.filter(function(x){return x.id===pending})[0];if(!t)return;var ex=parseFloat($('pt-c-exit').value);if(isNaN(ex)){$('pt-c-exit').focus();return;}t.exit=ex;t.exitPrem=($('pt-c-prem').value||'').trim();t.reviewNote=($('pt-c-note').value||'').trim();t.closedAt=new Date().toISOString();t.status='CLOSED';var raw=(ex-t.entry)/t.entry*100;t.stockMove=parseFloat((t.dir==='LONG'?raw:-raw).toFixed(3));t.win=t.stockMove>0;if(t.prem&&t.exitPrem){t.optPnl=parseFloat((((parseFloat(t.exitPrem)-parseFloat(t.prem))/parseFloat(t.prem))*100).toFixed(1));}else{t.optPnl=null;}save(trades);$('pt-modal').style.display='none';pending=null;document.querySelector('.pt-sub button[data-pt=review]').click();});
+  function renderReview(){var c=trades.filter(function(t){return t.status==='CLOSED'});if(!c.length){$('pt-reviewwrap').innerHTML='<div class="pt-card"><div class="empty"><strong>Nothing to review yet</strong><br>Close a few paper trades \u2014 this tells you whether following the tool helped.</div></div>';return;}
+    var wins=c.filter(function(t){return t.win}).length,wr=wins/c.length*100,avg=c.reduce(function(s,t){return s+t.stockMove},0)/c.length,trap=c.filter(function(t){return t.win&&t.optPnl!=null&&t.optPnl<0}).length;
+    function seg(a){return a.length?(a.filter(function(t){return t.win}).length/a.length*100).toFixed(0)+'% <span style="color:var(--ink-3)">('+a.filter(function(t){return t.win}).length+'/'+a.length+')</span>':'<span style="color:var(--ink-3)">\u2014</span>';}
+    function segp(a){return a.length?a.filter(function(t){return t.win}).length/a.length*100:0;}
+    var foll=c.filter(function(t){return t.followed}),over=c.filter(function(t){return !t.followed}),gp=c.filter(function(t){return t.gate==='PASS'}),gf=c.filter(function(t){return t.gate==='FAIL'});
+    var h='<div class="stat"><div class="box"><div class="v '+(wr>=50?'up':'down')+'">'+wr.toFixed(0)+'%</div><div class="k">win rate</div></div><div class="box"><div class="v '+(avg>=0?'up':'down')+'">'+(avg>=0?'+':'')+avg.toFixed(2)+'%</div><div class="k">avg move (your way)</div></div><div class="box"><div class="v">'+c.length+'</div><div class="k">closed</div></div><div class="box"><div class="v" style="color:'+(trap?'var(--gold)':'var(--ink)')+'">'+trap+'</div><div class="k">stock right, option lost</div></div></div>';
+    h+='<div class="pt-card"><strong>Did following the tool help?</strong><div class="hint" style="margin:6px 0 14px">If "followed" doesn\u2019t beat "override", the tool hasn\u2019t earned your trust yet.</div><div style="margin-bottom:10px"><span class="tag f">followed</span> '+seg(foll)+'<div class="bar"><i style="width:'+segp(foll)+'%"></i></div></div><div style="margin-bottom:10px"><span class="tag o">override</span> '+seg(over)+'<div class="bar"><i style="width:'+segp(over)+'%"></i></div></div><div style="margin-bottom:10px"><span class="tag p">gate PASS</span> '+seg(gp)+'<div class="bar"><i style="width:'+segp(gp)+'%"></i></div></div><div><span class="tag x">gate FAIL</span> '+seg(gf)+'<div class="bar"><i style="width:'+segp(gf)+'%"></i></div></div></div>';
+    if(trap){h+='<div class="note"><strong style="color:var(--gold)">The theta lesson, '+trap+'\u00d7:</strong> the stock moved your way but the option still lost. Direction isn\u2019t enough when you buy premium \u2014 the move must be big and fast.</div>';}
+    h+='<div class="pt-card"><strong>All closed trades</strong><table style="margin-top:10px"><thead><tr><th>Symbol</th><th>Tool</th><th class="r">Stock</th><th class="r">Option</th><th>Thesis \u2192 learning</th></tr></thead><tbody>';
+    c.slice().reverse().forEach(function(t){h+='<tr><td><strong>'+t.symbol+'</strong> <span style="color:var(--ink-3)">'+t.dir+'</span></td><td><span class="tag '+(t.followed?'f':'o')+'">'+(t.followed?'followed':'override')+'</span></td><td class="r mono '+(t.win?'up':'down')+'">'+(t.stockMove>=0?'+':'')+t.stockMove+'%</td><td class="r mono '+(t.optPnl==null?'':(t.optPnl>=0?'up':'down'))+'">'+(t.optPnl==null?'\u2014':(t.optPnl>=0?'+':'')+t.optPnl+'%')+'</td><td style="max-width:280px">'+t.thesis+(t.reviewNote?'<br><span style="color:var(--ink-3)">\u21b3 '+t.reviewNote+'</span>':'')+'</td></tr>';});
+    h+='</tbody></table></div>';$('pt-reviewwrap').innerHTML=h;}
+  $('pt-export').addEventListener('click',function(){if(!trades.length)return;var cols=['id','createdAt','closedAt','symbol','dir','sig','gate','followed','bs','pot','entry','tgt','inv','opt','prem','exit','exitPrem','stockMove','optPnl','win','thesis','reviewNote','status'];var esc=function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';};var csv=[cols.join(',')].concat(trades.map(function(t){return cols.map(function(k){return esc(t[k]);}).join(',');})).join('\n');var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='investiq-paper-trades-'+new Date().toISOString().slice(0,10)+'.csv';a.click();});
+  $('pt-reset').addEventListener('click',function(){if(confirm('Delete all paper trades on this device?')){trades=[];save(trades);count();renderOpen();renderReview();}});
+  count();
+})();
+</script>
+</body>
+</html>
